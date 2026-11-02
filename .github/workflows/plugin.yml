@@ -1,0 +1,28 @@
+name: Plugin (compila e testa)
+
+on:
+  push:
+    paths: ["plugin/**", ".github/workflows/plugin.yml"]
+  pull_request:
+    paths: ["plugin/**", ".github/workflows/plugin.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Compilar e testar
+        working-directory: plugin
+        run: mvn -B verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Comuna-plugin
+          path: plugin/target/Comuna-*.jar

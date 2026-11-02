@@ -1,0 +1,7 @@
+# Comuna de Blocos
+base:
+  # metade do lado da base: raio 10 = 21 x 21 blocos
+  raio: 10
+lava:
+  # defesa contra lavacast: no máximo tantos baldes de lava por minuto, por jogador
+  baldes-por-minuto: 6
