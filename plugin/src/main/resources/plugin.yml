@@ -17,6 +17,20 @@ commands:
   plano:
     description: "Coordenação: mudar de lugar (perto do spawn) ou remover o NPC da Comissão do Plano."
     usage: /plano npc | remover
+  entrar:
+    description: "Entrar no servidor com a sua senha."
+    usage: /entrar <senha>
+    aliases: [login]
+  registrar:
+    description: "Primeira vez: criar a sua senha."
+    usage: /registrar <senha> <senha>
+    aliases: [register]
+  trocarsenha:
+    description: "Trocar a sua senha."
+    usage: /trocarsenha <senha atual> <senha nova>
+  senha:
+    description: "Console: apagar a senha de quem esqueceu."
+    usage: /senha remover <nick>
 permissions:
   comuna.coordenacao:
     description: "Coordenação: cria áreas coletivas e coloca a Comissão do Plano."

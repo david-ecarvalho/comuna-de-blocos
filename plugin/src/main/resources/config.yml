@@ -30,3 +30,6 @@ guarda-de-dados:
   # prazos do parecer jurídico de 02/11/2026 (LGPD): registro de construção e logs do servidor
   coreprotect-dias: 90
   logs-dias: 30
+login:
+  # login próprio por senha (/registrar e /entrar); necessário com a verificação de conta da Mojang desligada
+  ativo: true

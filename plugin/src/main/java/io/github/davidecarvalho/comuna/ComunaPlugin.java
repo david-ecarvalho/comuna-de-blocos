@@ -25,6 +25,7 @@ public final class ComunaPlugin extends JavaPlugin {
     private final Territorio territorio = new Territorio();
     private Armazem armazem;
     private PlanoServico plano;
+    private Portaria portaria;
     private int raioDaBase;
 
     @Override
@@ -42,11 +43,18 @@ public final class ComunaPlugin extends JavaPlugin {
         for (Recurso r : Recurso.values()) {
             pesos.put(r, getConfig().getInt("vale-trabalho.pesos." + r.name().toLowerCase(Locale.ROOT), r.pesoPadrao));
         }
+        Portaria portaria = null;
+        if (getConfig().getBoolean("login.ativo", true)) {
+            portaria = new Portaria(this);
+            getServer().getPluginManager().registerEvents(portaria, this);
+        }
+        this.portaria = portaria;
         Estoque estoque = new Estoque(pesos, getConfig().getInt("vale-trabalho.pesos.comida", 1),
                 getConfig().getInt("vale-trabalho.fundo-social-percentual", 20));
         plano = new PlanoServico(this, estoque, getConfig().getInt("necessidade.fome-que-pede-comida",
                 Necessidades.FOME_QUE_TRAVA_A_CORRIDA), getConfig().getInt("necessidade.horas-de-chegada", 2),
-                getConfig().getInt("necessidade.horas-sem-contribuir", 2));
+                getConfig().getInt("necessidade.horas-sem-contribuir", 2),
+                portaria == null ? id -> true : portaria::entrou);
         getServer().getPluginManager().registerEvents(plano, this);
         // depois que o mundo carregou: a praça e a Comissão do Plano no spawn
         getServer().getScheduler().runTask(this, () -> {
@@ -90,6 +98,9 @@ public final class ComunaPlugin extends JavaPlugin {
 
     @Override
     public boolean onCommand(CommandSender quem, Command comando, String rotulo, String[] args) {
+        if (comando.getName().equals("senha")) {
+            return senha(quem, args);
+        }
         if (!(quem instanceof Player p)) {
             quem.sendMessage("Só dentro do jogo.");
             return true;
@@ -102,6 +113,21 @@ public final class ComunaPlugin extends JavaPlugin {
             case "plano" -> plano(p, acao);
             default -> false;
         };
+    }
+
+    /** Só o console: /senha remover <nick> apaga a senha de quem esqueceu. */
+    private boolean senha(CommandSender quem, String[] args) {
+        if (quem instanceof Player) {
+            quem.sendMessage(Component.text("Só pelo console do servidor.", NamedTextColor.RED));
+            return true;
+        }
+        if (portaria == null || args.length != 2 || !args[0].equalsIgnoreCase("remover")) {
+            quem.sendMessage("/senha remover <nick> (com o login ativo)");
+            return true;
+        }
+        quem.sendMessage(portaria.removerSenha(args[1]) ? "Senha de " + args[1] + " apagada."
+                : args[1] + " não tinha senha.");
+        return true;
     }
 
     private boolean estoque(Player p, String acao, String[] args) {

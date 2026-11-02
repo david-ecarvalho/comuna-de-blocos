@@ -17,8 +17,8 @@ services:
       TYPE: PAPER
       VERSION: "${VERSAO:-26.3}"
       MEMORY: 4G
-      ONLINE_MODE: "TRUE"
-      ENFORCE_SECURE_PROFILE: "TRUE"
+      ONLINE_MODE: "FALSE"             # login próprio do plugin Comuna (/registrar e /entrar)
+      ENFORCE_SECURE_PROFILE: "FALSE"
       ENABLE_WHITELIST: "TRUE"
       ENFORCE_WHITELIST: "TRUE"
       WHITELIST: "${WHITELIST:-}"

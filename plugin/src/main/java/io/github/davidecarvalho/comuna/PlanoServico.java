@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -57,6 +58,8 @@ final class PlanoServico implements Listener {
     private final long chegada;
     private final long janela;
     private final Map<UUID, Long> avisado = new HashMap<>();
+    /** Quem já entrou com a senha (Portaria): só esses são atendidos. */
+    private final Predicate<UUID> entrou;
     private final File arquivo;
     private final NamespacedKey marca;
     private UUID npc;
@@ -64,8 +67,10 @@ final class PlanoServico implements Listener {
     private Location ondeEsta;
     private Necessidades.Resultado ultimo = Necessidades.Resultado.VAZIO;
 
-    PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida, int horasDeChegada, int horasSemContribuir) {
+    PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida, int horasDeChegada, int horasSemContribuir,
+                 Predicate<UUID> entrou) {
         this.plugin = plugin;
+        this.entrou = entrou;
         this.estoque = estoque;
         this.fomeQuePedeComida = fomeQuePedeComida;
         this.chegada = horasDeChegada * Contribuicao.TICKS_POR_HORA;
@@ -101,7 +106,7 @@ final class PlanoServico implements Listener {
     /** Olha quem está online no modo sobrevivência, entrega o que o estoque cobre e atualiza o letreiro. */
     void atenderNecessidades() {
         List<Necessidades.Pessoa> pessoas = Bukkit.getOnlinePlayers().stream()
-                .filter(p -> p.getGameMode() == GameMode.SURVIVAL)
+                .filter(p -> p.getGameMode() == GameMode.SURVIVAL && entrou.test(p.getUniqueId()))
                 .map(this::pessoa)
                 .toList();
         ultimo = Necessidades.atender(pessoas, estoque, fomeQuePedeComida);
