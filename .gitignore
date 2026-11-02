@@ -53,3 +53,4 @@ build/
 # servidor de teste
 servidor-teste/dados/
 !servidor-teste/.env.exemplo
+servidor-teste/plugins-extra/

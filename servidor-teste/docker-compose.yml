@@ -30,8 +30,16 @@ services:
       VIEW_DISTANCE: 10
       SIMULATION_DISTANCE: 8
       TZ: America/Sao_Paulo
+      # Plugins só do Modrinth (nunca de fórum ou arquivo enviado por alguém). O CoreProtect 24.1 ainda não lista a
+      # 26.3 (só até a 26.2), e o instalador recusa: o arquivo oficial do Modrinth fica em ./plugins-extra, conferido
+      # pelo SHA-512 (ver plugins-extra.txt), e o servidor copia de /plugins.
+      MODRINTH_PROJECTS: |
+        luckperms
+        grimac
+      MODRINTH_DOWNLOAD_DEPENDENCIES: required
     volumes:
       - ./dados:/data
+      - ./plugins-extra:/plugins:ro
     deploy:
       resources:
         limits:

@@ -1,0 +1,4 @@
+# Plugins fora do instalador automático. Conferir: sha512sum -c plugins-extra.txt
+# CoreProtect: compilado do código oficial (github.com/PlayPro/CoreProtect, commit dffa04f, 19/10/2026, Artistic-2.0),
+# porque a versão publicada (24.1) recusa a 26.3. Trocar pela versão publicada quando sair.
+b9f3ab4f53e6b38c7a444a360bb2a451291e43c6426a19467450d054a2e759086738b5e444e4552cc8abb80b6a8b9150f8305e764899ced18cd84c3ad7730612 *plugins-extra/CoreProtect-24.1-dev-dffa04f.jar
