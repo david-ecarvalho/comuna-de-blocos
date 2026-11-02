@@ -2,7 +2,7 @@ name: Comuna
 version: ${project.version}
 main: io.github.davidecarvalho.comuna.ComunaPlugin
 api-version: "26.3"
-description: Bases pessoais protegidas, áreas coletivas e defesa contra lavacast.
+description: "Bases pessoais protegidas, áreas coletivas, defesa contra lavacast e a Comissão do Plano (necessidade e vale-trabalho)."
 website: https://github.com/david-ecarvalho/comuna-de-blocos
 commands:
   base:
@@ -12,10 +12,10 @@ commands:
     description: "Criar, remover ou listar áreas coletivas (coordenação)."
     usage: /coletiva criar <nome> <raio> [fundicao] | remover <nome> | lista
   estoque:
-    description: "Estoque coletivo: depositar o que está na mão (ganha vales-trabalho) ou ver o estoque."
+    description: "Estoque coletivo: depositar o que está na mão (recurso ou comida pronta, ganha vales-trabalho) ou ver o estoque."
     usage: /estoque depositar [tudo] | ver
   plano:
-    description: "Coordenação: colocar ou remover o NPC da Comissão do Plano."
+    description: "Coordenação: mudar de lugar (perto do spawn) ou remover o NPC da Comissão do Plano."
     usage: /plano npc | remover
 permissions:
   comuna.coordenacao:

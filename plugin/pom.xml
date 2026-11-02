@@ -5,9 +5,9 @@
 
   <groupId>io.github.davidecarvalho</groupId>
   <artifactId>comuna</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <name>Comuna</name>
-  <description>Plugin da Comuna de Blocos: bases pessoais protegidas, áreas coletivas e defesa contra lavacast.</description>
+  <description>Plugin da Comuna de Blocos: bases pessoais protegidas, áreas coletivas, defesa contra lavacast e a Comissão do Plano.</description>
 
   <licenses>
     <license>

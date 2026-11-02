@@ -9,16 +9,18 @@ import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/** Comuna de Blocos: bases pessoais, áreas coletivas e defesa contra lavacast. */
+/** Comuna de Blocos: bases pessoais, áreas coletivas, defesa contra lavacast e a Comissão do Plano. */
 public final class ComunaPlugin extends JavaPlugin {
 
     /** Cria áreas coletivas e coloca a Comissão do Plano, sem passar por cima das proteções. */
     static final String PERMISSAO_COORDENACAO = "comuna.coordenacao";
+    static final String PRACA = "praca";
 
     private final Territorio territorio = new Territorio();
     private Armazem armazem;
@@ -39,11 +41,35 @@ public final class ComunaPlugin extends JavaPlugin {
         for (Recurso r : Recurso.values()) {
             pesos.put(r, getConfig().getInt("vale-trabalho.pesos." + r.name().toLowerCase(Locale.ROOT), r.pesoPadrao));
         }
-        Estoque estoque = new Estoque(pesos, getConfig().getInt("vale-trabalho.fundo-social-percentual", 20));
-        plano = new PlanoServico(this, estoque);
+        Estoque estoque = new Estoque(pesos, getConfig().getInt("vale-trabalho.pesos.comida", 1),
+                getConfig().getInt("vale-trabalho.fundo-social-percentual", 20));
+        plano = new PlanoServico(this, estoque, getConfig().getInt("necessidade.fome-que-pede-comida",
+                Necessidades.FOME_QUE_TRAVA_A_CORRIDA));
         getServer().getPluginManager().registerEvents(plano, this);
-        getServer().getScheduler().runTaskTimer(this, plano::atualizarLetreiro, 100L, 200L);
+        // depois que o mundo carregou: a praça e a Comissão do Plano no spawn
+        getServer().getScheduler().runTask(this, () -> {
+            garantirPraca();
+            plano.garantirNoSpawn();
+        });
+        getServer().getScheduler().runTaskTimer(this, plano::atenderNecessidades, 100L, 200L);
         getLogger().info(territorio.areas().size() + " áreas carregadas.");
+    }
+
+    /** A praça do spawn é área coletiva: ninguém registra base em volta da Comissão do Plano. */
+    private void garantirPraca() {
+        if (territorio.areas().stream().anyMatch(a -> a.id().equals(PRACA))) {
+            return;
+        }
+        World mundo = getServer().getWorlds().get(0);
+        Location s = mundo.getSpawnLocation();
+        Territorio.Resultado r = territorio.criarColetiva(PRACA, mundo.getName(), s.getBlockX(), s.getBlockZ(),
+                PlanoServico.PERTO_DO_SPAWN, false);
+        if (r == Territorio.Resultado.OK) {
+            salvarTerritorio();
+            getLogger().info("Praça do spawn criada (área coletiva).");
+        } else {
+            getLogger().warning("Não criei a praça do spawn: " + r + " (uma base encosta no spawn).");
+        }
     }
 
     @Override
@@ -84,10 +110,10 @@ public final class ComunaPlugin extends JavaPlugin {
             return true;
         }
         switch (acao) {
-            case "npc" -> {
-                plano.colocarNpc(p.getLocation());
-                p.sendMessage(Component.text("Comissão do Plano colocada aqui.", NamedTextColor.GREEN));
-            }
+            case "npc" -> p.sendMessage(plano.colocarNpc(p.getLocation())
+                    ? Component.text("Comissão do Plano colocada aqui.", NamedTextColor.GREEN)
+                    : Component.text("A Comissão do Plano fica a até " + PlanoServico.PERTO_DO_SPAWN
+                            + " blocos do spawn.", NamedTextColor.RED));
             case "remover" -> {
                 plano.removerNpc();
                 p.sendMessage(Component.text("Comissão do Plano removida.", NamedTextColor.GREEN));
@@ -163,11 +189,15 @@ public final class ComunaPlugin extends JavaPlugin {
         };
         p.sendMessage(Component.text(texto, r == Territorio.Resultado.OK ? NamedTextColor.GREEN : NamedTextColor.RED));
         if (r == Territorio.Resultado.OK) {
-            try {
-                armazem.salvar(territorio.areas());
-            } catch (IOException e) {
-                getLogger().severe("Não salvei territorio.yml: " + e.getMessage());
-            }
+            salvarTerritorio();
+        }
+    }
+
+    private void salvarTerritorio() {
+        try {
+            armazem.salvar(territorio.areas());
+        } catch (IOException e) {
+            getLogger().severe("Não salvei territorio.yml: " + e.getMessage());
         }
     }
 }

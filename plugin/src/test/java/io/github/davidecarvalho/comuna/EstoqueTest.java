@@ -17,14 +17,7 @@ class EstoqueTest {
 
     @BeforeEach
     void montar() {
-        e = new Estoque(); // pesos padrão (pedra, madeira e trigo 1; ferro 4) e 20% para o fundo social
-    }
-
-    /** Ana trabalha e deposita o bastante para um kit de pedra e sobra. */
-    private void anaTrabalha() {
-        e.depositar(ana, Recurso.PEDRA, 30);
-        e.depositar(ana, Recurso.MADEIRA, 30);
-        e.depositar(ana, Recurso.TRIGO, 60);
+        e = new Estoque(); // pesos padrão (pedra, madeira e trigo 1; ferro 4; comida 1 por ponto) e 20% para o fundo
     }
 
     @Test
@@ -32,9 +25,11 @@ class EstoqueTest {
         assertEquals(new Recurso.Valor(Recurso.MADEIRA, 8), Recurso.de("OAK_LOG").orElseThrow());
         assertEquals(new Recurso.Valor(Recurso.MADEIRA, 2), Recurso.de("BIRCH_PLANKS").orElseThrow());
         assertEquals(new Recurso.Valor(Recurso.PEDRA, 1), Recurso.de("COBBLESTONE").orElseThrow());
-        assertEquals(new Recurso.Valor(Recurso.TRIGO, 3), Recurso.de("BREAD").orElseThrow());
         assertEquals(new Recurso.Valor(Recurso.FERRO, 9), Recurso.de("IRON_BLOCK").orElseThrow());
+        assertTrue(Recurso.de("BREAD").isEmpty(), "pão é comida pronta, guardada como está");
         assertTrue(Recurso.de("DIAMOND").isEmpty(), "o plano de agora não pede diamante");
+        assertEquals("1 tronco", Recurso.MADEIRA.fala(3));
+        assertEquals("2 troncos", Recurso.MADEIRA.fala(9));
     }
 
     @Test
@@ -46,66 +41,98 @@ class EstoqueTest {
     }
 
     @Test
+    void comidaProntaValePelosPontosDeFome() {
+        assertEquals(8, e.depositarComida(ana, "BREAD", 2), "2 pães = 10 pontos, 2 para o fundo");
+        assertEquals(2, e.comida("BREAD"));
+        assertEquals(0, e.depositarComida(ana, "ROTTEN_FLESH", 5), "carne podre não entra");
+        e.depositar(ana, Recurso.TRIGO, 7); // 2 pães, sobra 1 trigo
+        assertEquals(10 + 10, e.pontosDeComida());
+    }
+
+    @Test
+    void alimentarEncheComAMenorSobraEPrimeiroAComidaPronta() {
+        e.depositarComida(ana, "COOKED_BEEF", 1); // 8
+        e.depositarComida(ana, "BREAD", 1); // 5
+        e.depositar(ana, Recurso.TRIGO, 9); // 3 pães do trigo
+        List<Estoque.Item> itens = e.alimentar(14).orElseThrow(); // 6 de fome até encher
+        assertEquals(List.of(new Estoque.Item("COOKED_BEEF", 1), new Estoque.Item("BREAD", 2)), itens,
+                "bife (8), depois o pão pronto e um do trigo (5 + 5)");
+        assertEquals(0, e.comida("BREAD"));
+        assertEquals(6, e.quantidade(Recurso.TRIGO), "um pão saiu do trigo");
+    }
+
+    @Test
+    void semComidaBastanteNaoTiraNada() {
+        e.depositarComida(ana, "BREAD", 1);
+        assertTrue(e.alimentar(14).isEmpty());
+        assertEquals(1, e.comida("BREAD"), "espera o estoque cobrir");
+    }
+
+    @Test
+    void ferramentaPelaNecessidadeSoDeNovoQuandoQuebraOuMorre() {
+        e.depositar(ana, Recurso.PEDRA, 20);
+        e.depositar(ana, Recurso.MADEIRA, 20);
+        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA));
+        assertEquals(17, e.quantidade(Recurso.PEDRA));
+        assertEquals(18, e.quantidade(Recurso.MADEIRA));
+        assertTrue(!e.entregarFerramenta(beto, Ferramenta.PICARETA), "guardar no baú não dá outra");
+        e.quebrou(beto, Ferramenta.PICARETA);
+        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA));
+        e.morreu(beto);
+        assertTrue(e.podeReceber(beto, Ferramenta.PICARETA));
+    }
+
+    @Test
+    void ferramentaDePedraParaCima() {
+        assertTrue(Ferramenta.PICARETA.temBoa(List.of("IRON_PICKAXE")));
+        assertTrue(!Ferramenta.PICARETA.temBoa(List.of("WOODEN_PICKAXE", "GOLDEN_PICKAXE")));
+        assertTrue(!Ferramenta.MACHADO.temBoa(List.of("STONE_PICKAXE")), "picareta não é machado");
+        assertEquals(Ferramenta.MACHADO, Ferramenta.deBoa("STONE_AXE").orElseThrow());
+        assertTrue(Ferramenta.deBoa("WOODEN_AXE").isEmpty());
+    }
+
+    @Test
     void kitCustaOTrabalhoQueLeva() {
-        assertEquals(9 + 8 + 24, e.custoEmVales(NivelDoKit.PEDRA));
-        assertEquals(9 * 4 + 8 + 24, e.custoEmVales(NivelDoKit.FERRO));
+        assertEquals(9 + 8, e.custoEmVales(NivelDoKit.PEDRA));
+        assertEquals(9 * 4 + 8, e.custoEmVales(NivelDoKit.FERRO));
     }
 
     @Test
     void trabalhaMaisGanhaMais() {
-        anaTrabalha();
-        int vales = e.vales(ana); // 120 de trabalho, 96 de vales
-        assertEquals(96, vales);
-        assertEquals(Estoque.Tipo.ENTREGUE_POR_VALES, e.retirarKit(ana).tipo());
-        assertEquals(96 - 41, e.vales(ana));
-        assertEquals(Estoque.Tipo.ENTREGUE_POR_VALES, e.retirarKit(ana).tipo(), "ainda tem vales para outro");
+        e.depositar(ana, Recurso.PEDRA, 30);
+        e.depositar(ana, Recurso.MADEIRA, 30); // 60 de trabalho, 48 de vales
+        assertEquals(Estoque.Tipo.ENTREGUE, e.retirarKit(ana, Map.of()).tipo());
+        assertEquals(48 - 17, e.vales(ana));
+        assertEquals(Estoque.Tipo.ENTREGUE, e.retirarKit(ana, Map.of()).tipo(), "ainda tem vales para outro");
+        Estoque.Entrega beto0 = e.retirarKit(beto, Map.of());
+        assertEquals(Estoque.Tipo.SEM_VALES, beto0.tipo(), "o kit além do básico é trabalhando");
+        assertEquals(17, beto0.valesQueFaltam());
     }
 
     @Test
-    void primeiroKitDeQuemChegaSaiDoFundoSocial() {
-        anaTrabalha(); // fundo social: 24
-        e.depositar(ana, Recurso.PEDRA, 100); // fundo: 44, cobre um kit de 41
-        Estoque.Entrega primeira = e.retirarKit(beto);
-        assertEquals(Estoque.Tipo.ENTREGUE_PELO_FUNDO, primeira.tipo());
-        assertEquals(3, e.fundoSocial());
-        Estoque.Entrega segunda = e.retirarKit(beto);
-        assertEquals(Estoque.Tipo.SEM_VALES, segunda.tipo(), "do segundo em diante, é trabalhando");
-        assertEquals(41, segunda.valesQueFaltam());
-    }
-
-    @Test
-    void semEstoqueNaoHaKit() {
-        e.depositar(ana, Recurso.TRIGO, 200); // muitos vales, mas nada de pedra nem madeira
-        assertEquals(Estoque.Tipo.FALTA_NO_ESTOQUE, e.retirarKit(ana).tipo());
+    void oKitNaoTiraOQueANecessidadePede() {
+        e.depositar(ana, Recurso.PEDRA, 9);
+        e.depositar(ana, Recurso.MADEIRA, 8);
+        e.depositar(ana, Recurso.TRIGO, 100); // vales de sobra
+        assertEquals(Estoque.Tipo.FALTA_NO_ESTOQUE, e.retirarKit(ana, Map.of(Recurso.PEDRA, 3)).tipo(),
+                "3 pedregulhos estão reservados para a picareta de quem não tem");
     }
 
     @Test
     void kitDeFerroQuandoOColetivoProduziuFerroBastante() {
-        anaTrabalha();
+        e.depositar(ana, Recurso.MADEIRA, 30);
         assertEquals(NivelDoKit.PEDRA, e.nivelDoColetivo());
         e.depositar(ana, Recurso.FERRO, 64);
         assertEquals(NivelDoKit.FERRO, e.nivelDoColetivo());
-        Estoque.Entrega kit = e.retirarKit(ana);
+        Estoque.Entrega kit = e.retirarKit(ana, Map.of());
         assertEquals(NivelDoKit.FERRO, kit.nivel());
         assertEquals(64 - 9, e.quantidade(Recurso.FERRO));
     }
 
     @Test
     void semFerroNoEstoqueOcoletivoAindaDaOKitDePedra() {
-        anaTrabalha();
-        e.depositar(ana, Recurso.FERRO, 64);
-        e.restaurar(Map.of(Recurso.PEDRA, 9, Recurso.MADEIRA, 8, Recurso.TRIGO, 24),
-                Map.of(Recurso.FERRO, 64), Map.of(ana, 500), java.util.Set.of(), 0);
-        assertEquals(NivelDoKit.PEDRA, e.retirarKit(ana).nivel());
-    }
-
-    @Test
-    void faltasENpc() {
-        Map<Recurso, Integer> faltas = e.faltas(2);
-        assertEquals(18, faltas.get(Recurso.PEDRA));
-        assertEquals(16, faltas.get(Recurso.MADEIRA));
-        List<String> frases = Estoque.frases(Map.of(Recurso.MADEIRA, 9), NivelDoKit.PEDRA);
-        assertEquals(List.of("Falta madeira para os cabos das ferramentas dos trabalhadores: 2 troncos."), frases);
-        assertTrue(Estoque.frases(Map.of(), NivelDoKit.PEDRA).get(0).contains("Bom trabalho"));
+        e.restaurar(Map.of(Recurso.PEDRA, 9, Recurso.MADEIRA, 8), Map.of(Recurso.FERRO, 64), Map.of(),
+                Map.of(ana, 500), Map.of(), 0);
+        assertEquals(NivelDoKit.PEDRA, e.retirarKit(ana, Map.of()).nivel());
     }
 }

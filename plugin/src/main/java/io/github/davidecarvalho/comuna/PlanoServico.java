@@ -2,7 +2,9 @@ package io.github.davidecarvalho.comuna;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -12,9 +14,11 @@ import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Display;
@@ -26,51 +30,146 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerItemBreakEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * A Comissão do Plano: o NPC da área central que diz o que falta no estoque coletivo e entrega o kit do trabalhador
- * em troca de vales-trabalho. É um aldeão do próprio jogo, parado e invulnerável, com um letreiro (TextDisplay).
+ * A Comissão do Plano: o NPC do spawn. A cada 10 segundos olha a fome e o inventário de quem está online, entrega
+ * direto no inventário o que a necessidade pede e o estoque cobre (Necessidades), e o letreiro diz o que falta.
+ * Clicar nele troca vales-trabalho pelo kit além do básico. É um aldeão do próprio jogo, parado e invulnerável.
  */
 final class PlanoServico implements Listener {
 
     private static final String NOME = "Comissão do Plano";
+    /** Até quantos blocos do spawn a Comissão pode ficar. */
+    static final int PERTO_DO_SPAWN = 16;
 
     private final JavaPlugin plugin;
     private final Estoque estoque;
+    private final int fomeQuePedeComida;
     private final File arquivo;
     private final NamespacedKey marca;
     private UUID npc;
     private UUID letreiro;
+    private Location ondeEsta;
+    private Necessidades.Resultado ultimo = new Necessidades.Resultado(List.of(), 0, 0, Map.of(), Map.of(), Map.of());
 
-    PlanoServico(JavaPlugin plugin, Estoque estoque) {
+    PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida) {
         this.plugin = plugin;
         this.estoque = estoque;
+        this.fomeQuePedeComida = fomeQuePedeComida;
         this.arquivo = new File(plugin.getDataFolder(), "estoque.yml");
         this.marca = new NamespacedKey(plugin, "comissao-do-plano");
         ler();
     }
 
-    /** Quem está online sem nenhuma picareta: são esses que precisam de kit agora. */
-    private static int precisandoDeKit() {
-        return (int) Bukkit.getOnlinePlayers().stream().filter(p -> {
-            for (ItemStack i : p.getInventory().getContents()) {
-                if (i != null && i.getType().name().endsWith("_PICKAXE")) {
-                    return false;
-                }
+    // ---- a necessidade ----
+
+    private Necessidades.Pessoa pessoa(Player p) {
+        List<String> materiais = new ArrayList<>();
+        boolean temComida = false;
+        for (ItemStack i : p.getInventory().getContents()) {
+            if (i != null) {
+                materiais.add(i.getType().name());
+                temComida |= Comida.eComida(i.getType().name());
             }
-            return true;
-        }).count();
+        }
+        Set<Ferramenta> sem = EnumSet.noneOf(Ferramenta.class);
+        for (Ferramenta f : Ferramenta.values()) {
+            if (!f.temBoa(materiais)) {
+                sem.add(f);
+            }
+        }
+        return new Necessidades.Pessoa(p.getUniqueId(), p.getFoodLevel(), temComida, sem);
+    }
+
+    /** Olha quem está online no modo sobrevivência, entrega o que o estoque cobre e atualiza o letreiro. */
+    void atenderNecessidades() {
+        List<Necessidades.Pessoa> pessoas = Bukkit.getOnlinePlayers().stream()
+                .filter(p -> p.getGameMode() == GameMode.SURVIVAL)
+                .map(this::pessoa)
+                .toList();
+        ultimo = Necessidades.atender(pessoas, estoque, fomeQuePedeComida);
+        for (Necessidades.Entrega en : ultimo.entregas()) {
+            Player p = Bukkit.getPlayer(en.quem());
+            if (p == null) {
+                continue;
+            }
+            Component msg = Component.text("A Comissão do Plano mandou ");
+            boolean primeiro = true;
+            for (Estoque.Item it : en.itens()) {
+                Material m = Material.valueOf(it.material());
+                dar(p, new ItemStack(m, it.quantidade()));
+                msg = msg.append(Component.text((primeiro ? "" : ", ") + it.quantidade() + " "))
+                        .append(Component.translatable(m.translationKey()));
+                primeiro = false;
+            }
+            p.sendMessage(msg.append(Component.text(en.motivo() == Necessidades.Motivo.FOME
+                    ? ": você estava com fome." : ": você não tinha.")).append(Component.text(
+                    " Veio do trabalho de todos.")).color(NamedTextColor.GREEN));
+        }
+        if (!ultimo.entregas().isEmpty()) {
+            salvar();
+        }
+        atualizarLetreiro();
     }
 
     List<String> frasesAgora() {
-        return Estoque.frases(estoque.faltas(precisandoDeKit()), estoque.nivelDoColetivo());
+        return Necessidades.frases(ultimo);
     }
 
-    void colocarNpc(Location onde) {
+    @EventHandler
+    void aoQuebrar(PlayerItemBreakEvent e) {
+        Ferramenta.deBoa(e.getBrokenItem().getType().name()).ifPresent(f -> {
+            estoque.quebrou(e.getPlayer().getUniqueId(), f);
+            salvar();
+        });
+    }
+
+    @EventHandler
+    void aoMorrer(PlayerDeathEvent e) {
+        if (!e.getKeepInventory()) {
+            estoque.morreu(e.getEntity().getUniqueId());
+            salvar();
+        }
+    }
+
+    // ---- o NPC ----
+
+    private static Location noChao(Location l) {
+        return l.getWorld().getHighestBlockAt(l).getLocation().add(0.5, 1, 0.5);
+    }
+
+    private static boolean pertoDoSpawn(Location l) {
+        if (l == null || l.getWorld() == null) {
+            return false;
+        }
+        Location s = l.getWorld().getSpawnLocation();
+        return l.getWorld().equals(Bukkit.getWorlds().get(0))
+                && Math.abs(l.getBlockX() - s.getBlockX()) <= PERTO_DO_SPAWN
+                && Math.abs(l.getBlockZ() - s.getBlockZ()) <= PERTO_DO_SPAWN;
+    }
+
+    /** Na subida do servidor: se a Comissão não está no spawn, vai para lá. */
+    void garantirNoSpawn() {
+        if (npc != null && pertoDoSpawn(ondeEsta)) {
+            return;
+        }
+        World mundo = Bukkit.getWorlds().get(0);
+        colocarNpc(noChao(mundo.getSpawnLocation()));
+        plugin.getLogger().info("Comissão do Plano colocada no spawn.");
+    }
+
+    /** Devolve false se o lugar está longe do spawn. */
+    boolean colocarNpc(Location onde) {
+        if (!pertoDoSpawn(onde)) {
+            return false;
+        }
         removerNpc();
         Villager v = onde.getWorld().spawn(onde, Villager.class, a -> {
             a.setAI(false);
@@ -89,8 +188,10 @@ final class PlanoServico implements Listener {
         });
         npc = v.getUniqueId();
         letreiro = t.getUniqueId();
+        ondeEsta = onde.clone();
         atualizarLetreiro();
         salvar();
+        return true;
     }
 
     void removerNpc() {
@@ -102,13 +203,24 @@ final class PlanoServico implements Listener {
         }
         npc = null;
         letreiro = null;
+        ondeEsta = null;
         salvar();
+    }
+
+    /** Comissão antiga que estava num pedaço do mundo descarregado: sai quando o pedaço carrega. */
+    @EventHandler
+    void aoCarregarEntidades(EntitiesLoadEvent e) {
+        for (Entity en : e.getEntities()) {
+            if (en.getPersistentDataContainer().has(marca)
+                    && !en.getUniqueId().equals(npc) && !en.getUniqueId().equals(letreiro)) {
+                en.remove();
+            }
+        }
     }
 
     void atualizarLetreiro() {
         if (letreiro != null && Bukkit.getEntity(letreiro) instanceof TextDisplay t) {
-            t.text(Component.text("O QUE FALTA NO ESTOQUE (kit " + estoque.nivelDoColetivo().nome + ")\n",
-                            NamedTextColor.GOLD)
+            t.text(Component.text("COMISSÃO DO PLANO: O QUE FALTA\n", NamedTextColor.GOLD)
                     .append(Component.text(String.join("\n", frasesAgora()), NamedTextColor.WHITE)));
         }
     }
@@ -120,22 +232,26 @@ final class PlanoServico implements Listener {
         }
         e.setCancelled(true);
         Player p = e.getPlayer();
-        Estoque.Entrega r = estoque.retirarKit(p.getUniqueId());
+        atenderNecessidades(); // quem clicou com fome ou sem ferramenta já recebe aqui
+        Estoque.Entrega r = estoque.retirarKit(p.getUniqueId(), ultimo.demanda());
         switch (r.tipo()) {
-            case ENTREGUE_POR_VALES, ENTREGUE_PELO_FUNDO -> {
-                darKit(p, r.nivel());
-                p.sendMessage(Component.text("Kit " + r.nivel().nome + " entregue"
-                        + (r.tipo() == Estoque.Tipo.ENTREGUE_PELO_FUNDO
-                                ? " pelo fundo social: é o seu primeiro, bem-vindo, camarada!"
-                                : ". Vales que sobraram: " + estoque.vales(p.getUniqueId()) + "."),
-                        NamedTextColor.GREEN));
+            case ENTREGUE -> {
+                for (String f : r.nivel().ferramentas) {
+                    dar(p, new ItemStack(Material.valueOf(f)));
+                }
+                p.sendMessage(Component.text("Kit " + r.nivel().nome + " entregue pelos seus vales-trabalho. Sobraram "
+                        + estoque.vales(p.getUniqueId()) + ".", NamedTextColor.GREEN));
                 salvar();
                 atualizarLetreiro();
             }
-            case SEM_VALES -> p.sendMessage(Component.text("Faltam " + r.valesQueFaltam() + " vales-trabalho para o kit "
-                    + r.nivel().nome + ". Trabalhe e deposite com /estoque depositar.", NamedTextColor.YELLOW));
+            case SEM_VALES -> p.sendMessage(Component.text("O kit " + r.nivel().nome + " custa "
+                    + estoque.custoEmVales(r.nivel()) + " vales-trabalho e faltam " + r.valesQueFaltam()
+                    + ". Deposite com /estoque depositar.", NamedTextColor.YELLOW));
             case FALTA_NO_ESTOQUE -> {
-                p.sendMessage(Component.text("O estoque ainda não fecha um kit:", NamedTextColor.RED));
+                p.sendMessage(Component.text(ultimo.demanda().isEmpty()
+                        ? "O estoque ainda não fecha o kit " + r.nivel().nome + "."
+                        : "A necessidade vem antes: o estoque está guardado para quem não tem ferramenta.",
+                        NamedTextColor.RED));
                 frasesAgora().forEach(f -> p.sendMessage(Component.text(" - " + f, NamedTextColor.GRAY)));
             }
         }
@@ -148,24 +264,21 @@ final class PlanoServico implements Listener {
         }
     }
 
-    private static void darKit(Player p, NivelDoKit nivel) {
-        for (String f : nivel.ferramentas) {
-            dar(p, new ItemStack(Material.valueOf(f)));
-        }
-        dar(p, new ItemStack(Material.BREAD, NivelDoKit.PAES));
-    }
-
     private static void dar(Player p, ItemStack item) {
         p.getInventory().addItem(item).values().forEach(sobra -> p.getWorld().dropItem(p.getLocation(), sobra));
     }
 
+    // ---- depósito e resumo ----
+
     /** Deposita o item da mão (ou todos do mesmo tipo, com "tudo"). Devolve a mensagem para o jogador. */
     Component depositar(Player p, boolean tudo) {
         ItemStack mao = p.getInventory().getItemInMainHand();
-        var valor = Recurso.de(mao.getType().name());
-        if (mao.getType().isAir() || valor.isEmpty()) {
-            return Component.text("O plano de agora precisa de pedra, madeira, trigo e ferro. Segure um desses.",
-                    NamedTextColor.RED);
+        String nome = mao.getType().name();
+        var valor = Recurso.de(nome);
+        boolean comida = Comida.eComida(nome);
+        if (mao.getType().isAir() || (valor.isEmpty() && !comida)) {
+            return Component.text("O plano de agora precisa de pedra, madeira, trigo, ferro e comida pronta. "
+                    + "Segure um desses.", NamedTextColor.RED);
         }
         Material tipo = mao.getType();
         int itens = 0;
@@ -180,30 +293,37 @@ final class PlanoServico implements Listener {
             itens = mao.getAmount();
             p.getInventory().setItemInMainHand(null);
         }
-        int ganhos = estoque.depositar(p.getUniqueId(), valor.get().recurso(), itens * valor.get().unidades());
+        int ganhos = comida ? estoque.depositarComida(p.getUniqueId(), nome, itens)
+                : estoque.depositar(p.getUniqueId(), valor.get().recurso(), itens * valor.get().unidades());
         salvar();
-        atualizarLetreiro();
-        return Component.text(itens + " de " + tipo.name().toLowerCase().replace('_', ' ') + " no estoque coletivo: +"
-                + ganhos + " vales-trabalho (total " + estoque.vales(p.getUniqueId()) + ").", NamedTextColor.GREEN);
+        atenderNecessidades(); // se alguém esperava por isso, recebe agora
+        return Component.text(itens + " de ").append(Component.translatable(tipo.translationKey()))
+                .append(Component.text(" no estoque coletivo: +" + ganhos + " vales-trabalho (total "
+                        + estoque.vales(p.getUniqueId()) + ")."))
+                .color(NamedTextColor.GREEN);
     }
 
     Component resumo(Player p) {
         NivelDoKit n = estoque.nivelDoColetivo();
-        Component c = Component.text("ESTOQUE COLETIVO (kit " + n.nome + ", custa " + estoque.custoEmVales(n)
-                + " vales)", NamedTextColor.GOLD);
+        Component c = Component.text("ESTOQUE COLETIVO", NamedTextColor.GOLD);
         for (Recurso r : Recurso.values()) {
             c = c.append(Component.newline()).append(Component.text(" " + r.nome + ": "
-                    + r.paraFala(estoque.quantidade(r)) + " " + r.unidadeDeFala, NamedTextColor.WHITE));
+                    + r.fala(estoque.quantidade(r)), NamedTextColor.WHITE));
         }
-        c = c.append(Component.newline()).append(Component.text(" fundo social: " + estoque.fundoSocial()
-                + " vales", NamedTextColor.WHITE));
+        c = c.append(Component.newline()).append(Component.text(" comida: " + estoque.pontosDeComida()
+                + " pontos de fome (com o pão que o trigo dá)", NamedTextColor.WHITE));
+        c = c.append(Component.newline()).append(Component.text(" fundo social (fica para a necessidade): "
+                + estoque.fundoSocial() + " vales", NamedTextColor.WHITE));
         c = c.append(Component.newline()).append(Component.text("Seus vales-trabalho: "
-                + estoque.vales(p.getUniqueId()), NamedTextColor.AQUA));
+                + estoque.vales(p.getUniqueId()) + " (kit " + n.nome + ": " + estoque.custoEmVales(n) + ")",
+                NamedTextColor.AQUA));
         for (String f : frasesAgora()) {
             c = c.append(Component.newline()).append(Component.text(" " + f, NamedTextColor.GRAY));
         }
         return c;
     }
+
+    // ---- estoque.yml ----
 
     private void ler() {
         if (!arquivo.exists()) {
@@ -216,18 +336,31 @@ final class PlanoServico implements Listener {
             qtd.put(r, y.getInt("estoque." + r.name(), 0));
             prod.put(r, y.getInt("produzido." + r.name(), 0));
         }
+        Map<String, Integer> comidas = new HashMap<>();
+        ConfigurationSection cs = y.getConfigurationSection("comida");
+        if (cs != null) {
+            cs.getKeys(false).forEach(k -> comidas.put(k, cs.getInt(k)));
+        }
         Map<UUID, Integer> vales = new HashMap<>();
         ConfigurationSection v = y.getConfigurationSection("vales");
         if (v != null) {
             v.getKeys(false).forEach(k -> vales.put(UUID.fromString(k), v.getInt(k)));
         }
-        Set<UUID> recebeu = new HashSet<>();
-        y.getStringList("ja-recebeu-kit").forEach(s -> recebeu.add(UUID.fromString(s)));
-        estoque.restaurar(qtd, prod, vales, recebeu, y.getInt("fundo-social", 0));
+        Map<UUID, Set<Ferramenta>> entregues = new HashMap<>();
+        ConfigurationSection en = y.getConfigurationSection("entregues");
+        if (en != null) {
+            for (String k : en.getKeys(false)) {
+                Set<Ferramenta> s = new HashSet<>();
+                en.getStringList(k).forEach(f -> s.add(Ferramenta.valueOf(f)));
+                entregues.put(UUID.fromString(k), s);
+            }
+        }
+        estoque.restaurar(qtd, prod, comidas, vales, entregues, y.getInt("fundo-social", 0));
         String n = y.getString("npc");
         String l = y.getString("letreiro");
         npc = n == null ? null : UUID.fromString(n);
         letreiro = l == null ? null : UUID.fromString(l);
+        ondeEsta = y.getLocation("npc-local");
     }
 
     void salvar() {
@@ -236,11 +369,13 @@ final class PlanoServico implements Listener {
             y.set("estoque." + r.name(), estoque.quantidade(r));
             y.set("produzido." + r.name(), estoque.produzido(r));
         }
+        estoque.comidas().forEach((m, q) -> y.set("comida." + m, q));
         estoque.todosOsVales().forEach((u, q) -> y.set("vales." + u, q));
-        y.set("ja-recebeu-kit", estoque.jaRecebeuKit().stream().map(UUID::toString).toList());
+        estoque.entregues().forEach((u, s) -> y.set("entregues." + u, s.stream().map(Enum::name).toList()));
         y.set("fundo-social", estoque.fundoSocial());
         y.set("npc", npc == null ? null : npc.toString());
         y.set("letreiro", letreiro == null ? null : letreiro.toString());
+        y.set("npc-local", ondeEsta);
         try {
             y.save(arquivo);
         } catch (IOException e) {

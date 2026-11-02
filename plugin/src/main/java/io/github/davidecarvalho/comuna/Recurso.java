@@ -4,24 +4,27 @@ import java.util.Optional;
 
 /**
  * O que o plano precisa, contado numa unidade só por recurso: pedra em pedregulhos, madeira em gravetos, trigo em
- * trigos, ferro em lingotes. Recebe o nome do material (Material.name()) para ficar sem nada do servidor.
+ * trigos, ferro em lingotes. Recebe o nome do material (Material.name()) para ficar sem nada do servidor. Comida pronta
+ * não é recurso: fica na Comida.
  *
  * <p>O peso é o trabalho que uma unidade leva, em vales-trabalho por unidade. Começa assim e a assembleia pode mudar
  * (config.yml).
  */
 public enum Recurso {
-    PEDRA("pedra", "pedregulhos", 1),
-    MADEIRA("madeira", "troncos", 1),
-    TRIGO("trigo", "trigos", 1),
-    FERRO("ferro", "lingotes de ferro", 4);
+    PEDRA("pedra", "pedregulho", "pedregulhos", 1),
+    MADEIRA("madeira", "tronco", "troncos", 1),
+    TRIGO("trigo", "trigo", "trigos", 1),
+    FERRO("ferro", "lingote de ferro", "lingotes de ferro", 4);
 
     public final String nome;
     public final String unidadeDeFala;
+    public final String unidadesDeFala;
     public final int pesoPadrao;
 
-    Recurso(String nome, String unidadeDeFala, int pesoPadrao) {
+    Recurso(String nome, String unidadeDeFala, String unidadesDeFala, int pesoPadrao) {
         this.nome = nome;
         this.unidadeDeFala = unidadeDeFala;
+        this.unidadesDeFala = unidadesDeFala;
         this.pesoPadrao = pesoPadrao;
     }
 
@@ -45,7 +48,6 @@ public enum Recurso {
         return switch (material) {
             case "STICK" -> Optional.of(new Valor(MADEIRA, 1));
             case "WHEAT" -> Optional.of(new Valor(TRIGO, 1));
-            case "BREAD" -> Optional.of(new Valor(TRIGO, 3));
             case "IRON_INGOT", "RAW_IRON" -> Optional.of(new Valor(FERRO, 1));
             case "IRON_BLOCK", "RAW_IRON_BLOCK" -> Optional.of(new Valor(FERRO, 9));
             default -> Optional.empty();
@@ -55,5 +57,11 @@ public enum Recurso {
     /** Converte unidades internas na unidade que o NPC fala (madeira: troncos, arredondando para cima). */
     public int paraFala(int unidades) {
         return this == MADEIRA ? (unidades + GRAVETOS_POR_TRONCO - 1) / GRAVETOS_POR_TRONCO : unidades;
+    }
+
+    /** "1 tronco", "3 troncos". */
+    public String fala(int unidades) {
+        int n = paraFala(unidades);
+        return n + " " + (n == 1 ? unidadeDeFala : unidadesDeFala);
     }
 }

@@ -1,32 +1,51 @@
-# Estoque coletivo e vale-trabalho (02/11/2026)
+# Estoque coletivo, necessidade e vale-trabalho (02/11/2026)
 
 ## A ideia
 
-Como na *Crítica do Programa de Gotha* (Marx, 1875): quem trabalha recebe um certificado do trabalho que deu, depois de
-descontada a parte do fundo social, e retira do estoque comum bens que custam a mesma quantidade de trabalho.
-Trabalha mais, pode retirar mais.
+Primeiro a necessidade social: ninguém fica com fome nem sem ferramenta enquanto houver no estoque. Depois o
+trabalho, como na *Crítica do Programa de Gotha* (Marx, 1875): quem trabalha recebe um certificado do trabalho que
+deu, descontada a parte do fundo social, e com ele retira do estoque bens que custam a mesma quantidade de trabalho.
+O fundo social é a parte do trabalho que não vira vale e fica para a necessidade.
 
-## Como funciona no jogo
+## A Comissão do Plano
 
-- `/estoque depositar` põe no estoque coletivo o que está na mão (`/estoque depositar tudo`: todos os itens daquele
-  tipo). O estoque é virtual. Aceita pedra (pedregulho), madeira (tronco, tábua, graveto), trigo (trigo, pão) e ferro
-  (lingote, ferro bruto, bloco).
-- Cada unidade vale vales-trabalho pelo seu peso (pedra, madeira e trigo: 1; ferro: 4). **20%** vão para o fundo
-  social.
-- `/estoque ver` mostra o estoque, o fundo social, os seus vales e o que falta.
-- **Comissão do Plano**: o NPC da área central (`/plano npc`, coordenação). O letreiro em cima dele diz o que falta para
-  dar o kit a quem está online sem picareta, por exemplo "Falta madeira para os cabos das ferramentas dos
-  trabalhadores: 2 troncos".
-- **Kit do trabalhador**: clique no NPC. Ele entrega o melhor kit que o coletivo já liberou, que o estoque cobre e que
-  a pessoa pode pagar em vales. Se não der, entrega o nível de baixo.
-  - **De pedra**: picareta, machado, pá e enxada de pedra e 8 pães (41 vales).
-  - **De ferro**: o mesmo, de ferro (68 vales). Liberado quando a comunidade já produziu 64 ferros no total.
-- **O primeiro kit de quem chega** sai do fundo social.
+O NPC fica no spawn, numa praça que é área coletiva (raio de 16 blocos, ninguém registra base ali). O plugin põe os
+dois sozinho quando o servidor sobe. A coordenação pode mudar o NPC de lugar com `/plano npc`, sempre a até 16 blocos
+do spawn.
 
-Os pesos, o percentual do fundo e os níveis ficam no `config.yml` (pesos e fundo) e em `NivelDoKit` (níveis), para a
-assembleia votar e mudar.
+A cada 10 segundos a Comissão olha quem está online no modo sobrevivência e entrega direto no inventário:
+
+- **Comida**: para quem chegou a 6 pontos de fome (3 coxinhas, quando o jogo não deixa mais correr) e não tem
+  comida consigo. Vai comida até encher a barra, com a menor sobra. A comida pronta sai antes do pão feito com o
+  trigo do estoque (3 trigos, 1 pão). Quem está com mais fome come primeiro.
+- **Ferramentas de pedra**: picareta, machado, pá e enxada, para quem não tem uma de pedra para cima (madeira e
+  ouro não contam). Primeiro a picareta de todo mundo, depois o machado e assim por diante. Quem já recebeu só
+  recebe outra quando a dela quebrar ou quando morrer. Guardar no baú não dá outra.
+
+O que o estoque não cobre vira o letreiro em cima do NPC:
+
+> 2 camaradas estão sem picareta de pedra.
+> Deposite 6 pedregulhos para ajudar.
+
+## Trabalho e vale-trabalho
+
+- `/estoque depositar` põe no estoque o que está na mão (`/estoque depositar tudo`: todos os itens daquele tipo).
+  Aceita pedra (pedregulho), madeira (tronco, tábua, graveto), trigo, ferro (lingote, ferro bruto, bloco) e comida
+  pronta (pão, carnes e peixes assados, batata assada, cenoura, maçã, tortas, sopas e outras). A comida pronta fica
+  guardada como está e vai inteira para quem tiver fome.
+- Cada unidade vale vales-trabalho pelo seu peso: pedra, madeira e trigo, 1; ferro, 4; comida pronta, 1 por ponto
+  de fome (pão = 5). **20%** vão para o fundo social.
+- `/estoque ver` mostra o estoque, a comida em pontos de fome, o fundo social, os seus vales e o que falta.
+- **Kit por vales**: clique no NPC. Ele entrega o melhor kit que o coletivo já liberou, que o estoque cobre e que a
+  pessoa pode pagar. Se não der, entrega o de baixo.
+  - **De pedra**: picareta, machado, pá e enxada de pedra (17 vales). Serve para ter ferramenta a mais.
+  - **De ferro**: as mesmas, de ferro (44 vales). Liberado quando a comunidade já produziu 64 ferros no total.
+  - O kit nunca tira do estoque o que a necessidade de agora está pedindo.
+
+Os pesos, o percentual do fundo e a fome que pede comida ficam no `config.yml`; os níveis do kit, em `NivelDoKit`.
+A assembleia pode votar e mudar.
 
 ## Permissões
 
-- `comuna.coordenacao`: cria áreas coletivas e coloca a Comissão do Plano.
+- `comuna.coordenacao`: cria áreas coletivas e muda a Comissão do Plano de lugar.
 - `comuna.admin`: passa por cima das proteções (só manutenção).
