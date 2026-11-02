@@ -22,3 +22,30 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Servidor local (nunca no repositório: mundo, jogadores, logs e segredos)
+servidor/
+world*/
+logs/
+crash-reports/
+cache/
+libraries/
+versions/
+plugins/*/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+eula.txt
+ops.json
+whitelist.json
+banned-*.json
+usercache.json
+server.properties
+*.env
+.env*
+
+# IDE e Gradle
+.gradle/
+build/
+.idea/
+*.iml
+.vscode/
