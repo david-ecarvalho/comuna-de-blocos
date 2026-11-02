@@ -19,6 +19,14 @@ vale-trabalho:
 necessidade:
   # com quantos pontos de fome a Comissão manda comida (6 = 3 coxinhas, quando o jogo trava a corrida)
   fome-que-pede-comida: 6
+  # quem pode trabalhar e não trabalha: nas primeiras horas de jogo a Comissão atende todo mundo; depois, só quem
+  # depositou alguma coisa nas últimas horas de jogo (tempo jogado, não de relógio)
+  horas-de-chegada: 2
+  horas-sem-contribuir: 2
 guarda:
   # golens de ferro da Guarda Popular na praça do spawn (não atacam trabalhador nem soltam ferro)
   golens: 3
+guarda-de-dados:
+  # prazos do parecer jurídico de 02/11/2026 (LGPD): registro de construção e logs do servidor
+  coreprotect-dias: 90
+  logs-dias: 30

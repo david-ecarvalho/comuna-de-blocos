@@ -21,7 +21,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * A Guarda Popular, primeira parte da milícia: golens de ferro que defendem a praça do spawn dos monstros. Ficam na
+ * A Guarda Popular: golens de ferro que defendem a praça do spawn dos monstros. Ficam na
  * praça (quem sai volta), não atacam trabalhador, trabalhador não fere a guarda, e quem morre volta em até 10 segundos
  * sem soltar ferro (senão a guarda vira fazenda de ferro).
  */

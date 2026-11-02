@@ -15,6 +15,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Statistic;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -49,6 +50,9 @@ final class PlanoServico implements Listener {
     private final JavaPlugin plugin;
     private final Estoque estoque;
     private final int fomeQuePedeComida;
+    private final long chegada;
+    private final long janela;
+    private final Map<UUID, Long> avisado = new HashMap<>();
     private final File arquivo;
     private final NamespacedKey marca;
     private UUID npc;
@@ -56,10 +60,12 @@ final class PlanoServico implements Listener {
     private Location ondeEsta;
     private Necessidades.Resultado ultimo = Necessidades.Resultado.VAZIO;
 
-    PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida) {
+    PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida, int horasDeChegada, int horasSemContribuir) {
         this.plugin = plugin;
         this.estoque = estoque;
         this.fomeQuePedeComida = fomeQuePedeComida;
+        this.chegada = horasDeChegada * Contribuicao.TICKS_POR_HORA;
+        this.janela = horasSemContribuir * Contribuicao.TICKS_POR_HORA;
         this.arquivo = new File(plugin.getDataFolder(), "estoque.yml");
         this.marca = new NamespacedKey(plugin, "comissao-do-plano");
         ler();
@@ -80,7 +86,12 @@ final class PlanoServico implements Listener {
         for (Ferramenta f : Ferramenta.values()) {
             f.melhor(materiais).ifPresent(g -> tem.put(f, g));
         }
-        return new Necessidades.Pessoa(p.getUniqueId(), p.getFoodLevel(), temComida, tem);
+        boolean contribui = Contribuicao.atende(jogado(p), estoque.ultimaContribuicao(p.getUniqueId()), chegada, janela);
+        return new Necessidades.Pessoa(p.getUniqueId(), p.getFoodLevel(), temComida, tem, contribui);
+    }
+
+    private static long jogado(Player p) {
+        return p.getStatistic(Statistic.PLAY_ONE_MINUTE); // apesar do nome, conta ticks jogados
     }
 
     /** Olha quem está online no modo sobrevivência, entrega o que o estoque cobre e atualiza o letreiro. */
@@ -107,6 +118,16 @@ final class PlanoServico implements Listener {
             p.sendMessage(msg.append(Component.text(en.motivo() == Necessidades.Motivo.FOME
                     ? ": você estava com fome." : ": você não tinha.")).append(Component.text(
                     " Veio do trabalho de todos.")).color(NamedTextColor.GREEN));
+        }
+        long agora = System.currentTimeMillis();
+        for (UUID id : ultimo.semContribuir()) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && agora - avisado.getOrDefault(id, 0L) >= 5 * 60_000) {
+                avisado.put(id, agora);
+                p.sendMessage(Component.text("A Comissão do Plano atende quem contribuiu nas últimas "
+                        + janela / Contribuicao.TICKS_POR_HORA + " horas de jogo. Deposite qualquer coisa com "
+                        + "/estoque depositar e ela volta a te atender.", NamedTextColor.YELLOW));
+            }
         }
         if (!ultimo.entregas().isEmpty()) {
             salvar();
@@ -292,6 +313,7 @@ final class PlanoServico implements Listener {
         }
         int ganhos = comida ? estoque.depositarComida(p.getUniqueId(), nome, itens)
                 : estoque.depositar(p.getUniqueId(), valor.get().recurso(), itens * valor.get().unidades());
+        estoque.contribuiu(p.getUniqueId(), jogado(p));
         salvar();
         atenderNecessidades(); // se alguém esperava por isso, recebe agora
         Component c = Component.text(itens + " de ").append(Component.translatable(tipo.translationKey()))
@@ -362,6 +384,10 @@ final class PlanoServico implements Listener {
             }
         }
         estoque.restaurar(qtd, prod, comidas, vales, entregues, y.getInt("fundo-social", 0));
+        ConfigurationSection ct = y.getConfigurationSection("contribuicao");
+        if (ct != null) {
+            ct.getKeys(false).forEach(k -> estoque.contribuiu(UUID.fromString(k), ct.getLong(k)));
+        }
         String n = y.getString("npc");
         String l = y.getString("letreiro");
         npc = n == null ? null : UUID.fromString(n);
@@ -378,6 +404,7 @@ final class PlanoServico implements Listener {
         estoque.comidas().forEach((m, q) -> y.set("comida." + m, q));
         estoque.todosOsVales().forEach((u, q) -> y.set("vales." + u, q));
         estoque.entregues().forEach((u, m) -> m.forEach((f, g) -> y.set("entregues." + u + "." + f.name(), g.name())));
+        estoque.contribuicoes().forEach((u, q) -> y.set("contribuicao." + u, q));
         y.set("fundo-social", estoque.fundoSocial());
         y.set("npc", npc == null ? null : npc.toString());
         y.set("letreiro", letreiro == null ? null : letreiro.toString());

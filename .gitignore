@@ -54,6 +54,7 @@ build/
 servidor-teste/dados/
 !servidor-teste/.env.exemplo
 servidor-teste/plugins-extra/
+servidor-teste/backups/
 
 # build do plugin
 plugin/target/

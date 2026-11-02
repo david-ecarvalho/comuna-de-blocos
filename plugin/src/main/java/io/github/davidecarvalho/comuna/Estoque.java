@@ -30,6 +30,7 @@ public final class Estoque {
     private final Map<String, Integer> comidas = new TreeMap<>();
     private final Map<UUID, Integer> vales = new HashMap<>();
     private final Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues = new HashMap<>();
+    private final Map<UUID, Long> contribuicoes = new HashMap<>();
     private int fundoSocial;
 
     /** pesoComida: vales por ponto de fome da comida pronta (pão = 5 pontos). */
@@ -54,6 +55,10 @@ public final class Estoque {
     public int fundoSocial() { return fundoSocial; }
     public Map<UUID, Integer> todosOsVales() { return vales; }
     public Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues() { return entregues; }
+    /** Ticks jogados por cada um quando depositou pela última vez (Contribuicao). */
+    public Map<UUID, Long> contribuicoes() { return contribuicoes; }
+    public Long ultimaContribuicao(UUID quem) { return contribuicoes.get(quem); }
+    public void contribuiu(UUID quem, long jogado) { contribuicoes.put(quem, jogado); }
 
     public void restaurar(Map<Recurso, Integer> quantidades, Map<Recurso, Integer> produzido,
                           Map<String, Integer> comidas, Map<UUID, Integer> vales,

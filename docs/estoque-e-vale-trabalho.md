@@ -31,6 +31,19 @@ O que o estoque não cobre vira o letreiro em cima do NPC:
 
 Na meta de ferro, a primeira linha é "Meta do plano: ferramentas de ferro para todos."
 
+## Quem pode trabalhar e não trabalha
+
+A *Crítica do Programa de Gotha* separa quem não pode trabalhar (o fundo social sustenta) de quem pode e não
+trabalha; Lênin (*O Estado e a Revolução*, cap. 5) chama de princípio socialista o "quem não trabalha não come",
+mirando quem vive do trabalho alheio. Aqui:
+
+- Nas **primeiras 2 horas de jogo**, a Comissão atende todo mundo pela necessidade: o recém-chegado ainda não pôde
+  trabalhar.
+- Depois, atende só quem **depositou alguma coisa nas últimas 2 horas de jogo**. Quem precisava e não contribuiu
+  recebe o aviso (no máximo a cada 5 minutos) e não entra na conta do letreiro.
+- Conta tempo jogado, não de relógio: quem fica dias fora não perde nada.
+- `necessidade.horas-de-chegada` e `necessidade.horas-sem-contribuir` no `config.yml`, para a assembleia mudar.
+
 ## Trabalho e vale-trabalho
 
 - `/estoque depositar` põe no estoque o que está na mão (`/estoque depositar tudo`: todos os itens daquele tipo).
@@ -55,6 +68,12 @@ ferro, para a guarda não virar fazenda de ferro. Só aparecem quando tem algué
 
 Os pesos, o percentual do fundo e a fome que pede comida ficam no `config.yml`; os níveis do kit, em `NivelDoKit`.
 A assembleia pode votar e mudar.
+
+## Guarda de dados
+
+Prazos do parecer jurídico de 02/11/2026 (LGPD): o plugin apaga sozinho, na subida e uma vez por dia, o registro do
+CoreProtect com mais de 90 dias e os logs do servidor com mais de 30 (`guarda-de-dados` no `config.yml`). O backup do
+servidor de teste guarda 7 dias.
 
 ## Permissões
 

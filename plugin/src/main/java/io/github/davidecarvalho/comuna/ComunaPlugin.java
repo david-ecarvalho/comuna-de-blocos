@@ -44,7 +44,8 @@ public final class ComunaPlugin extends JavaPlugin {
         Estoque estoque = new Estoque(pesos, getConfig().getInt("vale-trabalho.pesos.comida", 1),
                 getConfig().getInt("vale-trabalho.fundo-social-percentual", 20));
         plano = new PlanoServico(this, estoque, getConfig().getInt("necessidade.fome-que-pede-comida",
-                Necessidades.FOME_QUE_TRAVA_A_CORRIDA));
+                Necessidades.FOME_QUE_TRAVA_A_CORRIDA), getConfig().getInt("necessidade.horas-de-chegada", 2),
+                getConfig().getInt("necessidade.horas-sem-contribuir", 2));
         getServer().getPluginManager().registerEvents(plano, this);
         // depois que o mundo carregou: a praça e a Comissão do Plano no spawn
         getServer().getScheduler().runTask(this, () -> {
@@ -57,6 +58,8 @@ public final class ComunaPlugin extends JavaPlugin {
             plano.atenderNecessidades();
             guarda.manter();
         }, 100L, 200L);
+        new Limpeza(this, getConfig().getInt("guarda-de-dados.coreprotect-dias", 90),
+                getConfig().getInt("guarda-de-dados.logs-dias", 30)).agendar();
         getLogger().info(territorio.areas().size() + " áreas carregadas.");
     }
 

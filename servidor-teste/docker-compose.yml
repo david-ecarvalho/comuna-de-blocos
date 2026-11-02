@@ -23,7 +23,9 @@ services:
       ENFORCE_WHITELIST: "TRUE"
       WHITELIST: "${WHITELIST:-}"
       OPS: ""                         # ninguém com /op; permissões pelo LuckPerms
-      ENABLE_RCON: "FALSE"
+      # RCON só dentro da rede do Docker, para o backup pausar a gravação do mundo; a porta não sai da máquina
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: "${RCON_SENHA:?falta RCON_SENHA no .env}"
       ENABLE_QUERY: "FALSE"
       CREATE_CONSOLE_IN_PIPE: "TRUE"   # comandos de console só de dentro desta máquina (docker exec mc-send-to-console)
       MOTD: "Comuna de Blocos (teste)"
@@ -62,4 +64,24 @@ services:
       comuna:
         condition: service_started
         restart: true
+    restart: "no"
+
+  # Backup do mundo (02/11/2026): a cada 6 horas, pausando a gravação pelo RCON; guarda 7 dias em ./backups
+  # (fora do git). Não roda backup novo enquanto ninguém joga.
+  backup:
+    image: itzg/mc-backup:latest
+    container_name: comuna-backup
+    environment:
+      BACKUP_INTERVAL: "6h"
+      INITIAL_DELAY: "2m"
+      PRUNE_BACKUPS_DAYS: "7"
+      PAUSE_IF_NO_PLAYERS: "true"
+      RCON_HOST: comuna
+      RCON_PASSWORD: "${RCON_SENHA:?falta RCON_SENHA no .env}"
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./dados:/data:ro
+      - ./backups:/backups
+    depends_on:
+      - comuna
     restart: "no"

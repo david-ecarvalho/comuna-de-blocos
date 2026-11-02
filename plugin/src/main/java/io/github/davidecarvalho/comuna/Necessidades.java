@@ -1,10 +1,13 @@
 package io.github.davidecarvalho.comuna;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
 
@@ -26,8 +29,16 @@ public final class Necessidades {
     public static final int FOME_QUE_TRAVA_A_CORRIDA = 6;
     public static final int FOME_CHEIA = 20;
 
-    /** O que a Comissão sabe de cada pessoa: a fome, se tem comida consigo e o melhor grau de cada ferramenta. */
-    public record Pessoa(UUID id, int fome, boolean temComida, Map<Ferramenta, Ferramenta.Grau> ferramentas) {
+    /**
+     * O que a Comissão sabe de cada pessoa: a fome, se tem comida consigo, o melhor grau de cada ferramenta e se
+     * contribui (recém-chegada ou depositou há pouco: Contribuicao).
+     */
+    public record Pessoa(UUID id, int fome, boolean temComida, Map<Ferramenta, Ferramenta.Grau> ferramentas,
+                         boolean contribui) {
+
+        public Pessoa(UUID id, int fome, boolean temComida, Map<Ferramenta, Ferramenta.Grau> ferramentas) {
+            this(id, fome, temComida, ferramentas, true);
+        }
 
         boolean temAoMenos(Ferramenta f, Ferramenta.Grau g) {
             Ferramenta.Grau tem = ferramentas.get(f);
@@ -42,17 +53,30 @@ public final class Necessidades {
     /**
      * O que foi entregue e o que ficou faltando. meta: o grau que o plano está pedindo agora (nulo quando todo mundo
      * já tem tudo); demanda: o que as ferramentas que faltaram custam (a reserva que o kit por vales não pode tocar);
-     * faltas: o que falta no estoque para cobri-las.
+     * faltas: o que falta no estoque para cobri-las; semContribuir: quem precisava mas não contribuiu (não entra na
+     * conta e recebe o aviso).
      */
     public record Resultado(List<Entrega> entregas, int comFome, int pontosDeFomeQueFaltam, Ferramenta.Grau meta,
                             Map<Ferramenta, Integer> semFerramenta, Map<Recurso, Integer> demanda,
-                            Map<Recurso, Integer> faltas) {
+                            Map<Recurso, Integer> faltas, Set<UUID> semContribuir) {
 
-        public static final Resultado VAZIO = new Resultado(List.of(), 0, 0, null, Map.of(), Map.of(), Map.of());
+        public static final Resultado VAZIO = new Resultado(List.of(), 0, 0, null, Map.of(), Map.of(), Map.of(),
+                Set.of());
     }
 
-    public static Resultado atender(List<Pessoa> pessoas, Estoque e, int fomeQuePedeComida) {
+    public static Resultado atender(List<Pessoa> todas, Estoque e, int fomeQuePedeComida) {
         List<Entrega> entregas = new ArrayList<>();
+
+        // quem pode trabalhar e não trabalha não entra (Lênin, O Estado e a Revolução, cap. 5); o recém-chegado entra
+        Set<UUID> semContribuir = new HashSet<>();
+        for (Pessoa p : todas) {
+            boolean precisa = (p.fome() <= fomeQuePedeComida && !p.temComida())
+                    || Arrays.stream(Ferramenta.values()).anyMatch(f -> !p.temAoMenos(f, Ferramenta.METAS[0]));
+            if (!p.contribui() && precisa) {
+                semContribuir.add(p.id());
+            }
+        }
+        List<Pessoa> pessoas = todas.stream().filter(Pessoa::contribui).toList();
 
         // comida: quem está com mais fome primeiro
         int comFome = 0;
@@ -108,7 +132,7 @@ public final class Necessidades {
                 faltas.put(r, falta);
             }
         });
-        return new Resultado(entregas, comFome, pontosQueFaltam, meta, sem, demanda, faltas);
+        return new Resultado(entregas, comFome, pontosQueFaltam, meta, sem, demanda, faltas, semContribuir);
     }
 
     /** O que o letreiro da Comissão do Plano fala. */
