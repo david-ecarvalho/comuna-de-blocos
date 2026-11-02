@@ -72,50 +72,66 @@ class EstoqueTest {
     void ferramentaPelaNecessidadeSoDeNovoQuandoQuebraOuMorre() {
         e.depositar(ana, Recurso.PEDRA, 20);
         e.depositar(ana, Recurso.MADEIRA, 20);
-        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA));
+        Ferramenta.Grau pedra = Ferramenta.Grau.PEDRA;
+        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA, pedra));
         assertEquals(17, e.quantidade(Recurso.PEDRA));
         assertEquals(18, e.quantidade(Recurso.MADEIRA));
-        assertTrue(!e.entregarFerramenta(beto, Ferramenta.PICARETA), "guardar no baú não dá outra");
+        assertTrue(!e.entregarFerramenta(beto, Ferramenta.PICARETA, pedra), "guardar no baú não dá outra");
+        assertTrue(e.podeReceber(beto, Ferramenta.PICARETA, Ferramenta.Grau.FERRO), "a meta de ferro vale para ele");
         e.quebrou(beto, Ferramenta.PICARETA);
-        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA));
+        assertTrue(e.entregarFerramenta(beto, Ferramenta.PICARETA, pedra));
         e.morreu(beto);
-        assertTrue(e.podeReceber(beto, Ferramenta.PICARETA));
+        assertTrue(e.podeReceber(beto, Ferramenta.PICARETA, pedra));
     }
 
     @Test
     void ferramentaDePedraParaCima() {
-        assertTrue(Ferramenta.PICARETA.temBoa(List.of("IRON_PICKAXE")));
-        assertTrue(!Ferramenta.PICARETA.temBoa(List.of("WOODEN_PICKAXE", "GOLDEN_PICKAXE")));
-        assertTrue(!Ferramenta.MACHADO.temBoa(List.of("STONE_PICKAXE")), "picareta não é machado");
-        assertEquals(Ferramenta.MACHADO, Ferramenta.deBoa("STONE_AXE").orElseThrow());
-        assertTrue(Ferramenta.deBoa("WOODEN_AXE").isEmpty());
+        assertEquals(Ferramenta.Grau.FERRO,
+                Ferramenta.PICARETA.melhor(List.of("STONE_PICKAXE", "IRON_PICKAXE")).orElseThrow());
+        assertTrue(Ferramenta.PICARETA.melhor(List.of("WOODEN_PICKAXE", "GOLDEN_PICKAXE")).isEmpty());
+        assertTrue(Ferramenta.MACHADO.melhor(List.of("STONE_PICKAXE")).isEmpty(), "picareta não é machado");
+        assertEquals(new Ferramenta.Qual(Ferramenta.MACHADO, Ferramenta.Grau.PEDRA),
+                Ferramenta.de("STONE_AXE").orElseThrow());
+        assertTrue(Ferramenta.de("WOODEN_AXE").isEmpty());
+        assertEquals(Map.of(Recurso.PEDRA, 2, Recurso.MADEIRA, 1), Ferramenta.ESPADA.custo(Ferramenta.Grau.PEDRA));
     }
 
     @Test
     void kitCustaOTrabalhoQueLeva() {
-        assertEquals(9 + 8, e.custoEmVales(NivelDoKit.PEDRA));
-        assertEquals(9 * 4 + 8, e.custoEmVales(NivelDoKit.FERRO));
+        assertTrue(NivelDoKit.PEDRA.ferramentas.contains("STONE_SWORD"), "o kit tem espada");
+        assertEquals(11 + 9, e.custoEmVales(NivelDoKit.PEDRA));
+        assertEquals(11 * 4 + 9, e.custoEmVales(NivelDoKit.FERRO));
     }
 
     @Test
     void trabalhaMaisGanhaMais() {
-        e.depositar(ana, Recurso.PEDRA, 30);
-        e.depositar(ana, Recurso.MADEIRA, 30); // 60 de trabalho, 48 de vales
+        e.depositar(ana, Recurso.PEDRA, 40);
+        e.depositar(ana, Recurso.MADEIRA, 40); // 80 de trabalho, 64 de vales
         assertEquals(Estoque.Tipo.ENTREGUE, e.retirarKit(ana, Map.of()).tipo());
-        assertEquals(48 - 17, e.vales(ana));
+        assertEquals(64 - 20, e.vales(ana));
         assertEquals(Estoque.Tipo.ENTREGUE, e.retirarKit(ana, Map.of()).tipo(), "ainda tem vales para outro");
         Estoque.Entrega beto0 = e.retirarKit(beto, Map.of());
         assertEquals(Estoque.Tipo.SEM_VALES, beto0.tipo(), "o kit além do básico é trabalhando");
-        assertEquals(17, beto0.valesQueFaltam());
+        assertEquals(20, beto0.valesQueFaltam());
     }
 
     @Test
     void oKitNaoTiraOQueANecessidadePede() {
-        e.depositar(ana, Recurso.PEDRA, 9);
-        e.depositar(ana, Recurso.MADEIRA, 8);
+        e.depositar(ana, Recurso.PEDRA, 11);
+        e.depositar(ana, Recurso.MADEIRA, 9);
         e.depositar(ana, Recurso.TRIGO, 100); // vales de sobra
         assertEquals(Estoque.Tipo.FALTA_NO_ESTOQUE, e.retirarKit(ana, Map.of(Recurso.PEDRA, 3)).tipo(),
                 "3 pedregulhos estão reservados para a picareta de quem não tem");
+        assertEquals(Map.of(Recurso.PEDRA, 3), e.faltaParaKit(NivelDoKit.PEDRA, Map.of(Recurso.PEDRA, 3)));
+    }
+
+    @Test
+    void semMadeiraNaoHaKitEAMensagemDizOQueFalta() {
+        e.depositar(ana, Recurso.PEDRA, 47); // o teste do David em 02/11: muita pedra, nenhuma madeira
+        Estoque.Entrega r = e.retirarKit(ana, Map.of());
+        assertEquals(Estoque.Tipo.FALTA_NO_ESTOQUE, r.tipo());
+        assertEquals(Map.of(Recurso.MADEIRA, 9), e.faltaParaKit(r.nivel(), Map.of()));
+        assertEquals("2 troncos", Recurso.MADEIRA.fala(9));
     }
 
     @Test
@@ -126,12 +142,12 @@ class EstoqueTest {
         assertEquals(NivelDoKit.FERRO, e.nivelDoColetivo());
         Estoque.Entrega kit = e.retirarKit(ana, Map.of());
         assertEquals(NivelDoKit.FERRO, kit.nivel());
-        assertEquals(64 - 9, e.quantidade(Recurso.FERRO));
+        assertEquals(64 - 11, e.quantidade(Recurso.FERRO));
     }
 
     @Test
     void semFerroNoEstoqueOcoletivoAindaDaOKitDePedra() {
-        e.restaurar(Map.of(Recurso.PEDRA, 9, Recurso.MADEIRA, 8), Map.of(Recurso.FERRO, 64), Map.of(),
+        e.restaurar(Map.of(Recurso.PEDRA, 11, Recurso.MADEIRA, 9), Map.of(Recurso.FERRO, 64), Map.of(),
                 Map.of(ana, 500), Map.of(), 0);
         assertEquals(NivelDoKit.PEDRA, e.retirarKit(ana, Map.of()).nivel());
     }

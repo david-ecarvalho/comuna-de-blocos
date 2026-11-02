@@ -1,32 +1,34 @@
 package io.github.davidecarvalho.comuna;
 
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * O kit que se compra com vales-trabalho, além do que a necessidade já dá. Cada nível tem as ferramentas (nomes de
- * Material), o custo em recursos e quanto a comunidade precisa já ter produzido, no total, para liberá-lo.
+ * O kit que se compra com vales-trabalho, além do que a necessidade já dá: todas as ferramentas (picareta, espada,
+ * machado, pá e enxada) de um grau. Cada nível tem quanto a comunidade precisa já ter produzido, no total, para
+ * liberá-lo.
  */
 public enum NivelDoKit {
-    PEDRA("de pedra",
-            List.of("STONE_PICKAXE", "STONE_AXE", "STONE_SHOVEL", "STONE_HOE"),
-            Map.of(Recurso.PEDRA, 3 + 3 + 1 + 2, Recurso.MADEIRA, 4 * 2),
-            Map.of()),
-    FERRO("de ferro",
-            List.of("IRON_PICKAXE", "IRON_AXE", "IRON_SHOVEL", "IRON_HOE"),
-            Map.of(Recurso.FERRO, 3 + 3 + 1 + 2, Recurso.MADEIRA, 4 * 2),
-            Map.of(Recurso.FERRO, 64));
+    PEDRA(Ferramenta.Grau.PEDRA, Map.of()),
+    FERRO(Ferramenta.Grau.FERRO, Map.of(Recurso.FERRO, 64));
 
     public final String nome;
     public final List<String> ferramentas;
     public final Map<Recurso, Integer> custo;
     public final Map<Recurso, Integer> producaoParaLiberar;
 
-    NivelDoKit(String nome, List<String> ferramentas, Map<Recurso, Integer> custo,
-               Map<Recurso, Integer> producaoParaLiberar) {
-        this.nome = nome;
-        this.ferramentas = ferramentas;
-        this.custo = custo;
+    NivelDoKit(Ferramenta.Grau grau, Map<Recurso, Integer> producaoParaLiberar) {
+        this.nome = grau.nome;
+        List<String> lista = new ArrayList<>();
+        Map<Recurso, Integer> soma = new EnumMap<>(Recurso.class);
+        for (Ferramenta f : Ferramenta.values()) {
+            lista.add(f.material(grau));
+            f.custo(grau).forEach((r, c) -> soma.merge(r, c, Integer::sum));
+        }
+        this.ferramentas = List.copyOf(lista);
+        this.custo = Map.copyOf(soma);
         this.producaoParaLiberar = producaoParaLiberar;
     }
 }

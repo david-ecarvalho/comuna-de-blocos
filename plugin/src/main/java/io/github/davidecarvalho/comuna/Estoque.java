@@ -2,21 +2,19 @@ package io.github.davidecarvalho.comuna;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 
 /**
  * O estoque coletivo e o vale-trabalho, sem nada do servidor.
  *
- * <p>Primeiro a necessidade: quem está com fome recebe comida e quem não tem ferramenta de pedra recebe uma, direto do
- * estoque e sem pagar nada (Necessidades). Depois o trabalho, como na Crítica do Programa de Gotha (Marx, 1875): quem
+ * <p>Primeiro a necessidade: quem está com fome recebe comida e quem não tem a ferramenta da meta do plano (pedra,
+ * depois ferro) recebe uma, direto do estoque e sem pagar nada (Necessidades). Depois o trabalho, como na Crítica do Programa de Gotha (Marx, 1875): quem
  * deposita recebe vales pelo trabalho que deu, descontada a parte do fundo social (que é o que fica para a
  * necessidade), e com os vales retira um kit além do básico, que melhora quando o coletivo produziu o bastante
  * (NivelDoKit). O kit nunca tira do estoque o que a necessidade de agora está pedindo.
@@ -31,7 +29,7 @@ public final class Estoque {
     private final Map<Recurso, Integer> produzido = new EnumMap<>(Recurso.class);
     private final Map<String, Integer> comidas = new TreeMap<>();
     private final Map<UUID, Integer> vales = new HashMap<>();
-    private final Map<UUID, Set<Ferramenta>> entregues = new HashMap<>();
+    private final Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues = new HashMap<>();
     private int fundoSocial;
 
     /** pesoComida: vales por ponto de fome da comida pronta (pão = 5 pontos). */
@@ -55,11 +53,11 @@ public final class Estoque {
     public int vales(UUID quem) { return vales.getOrDefault(quem, 0); }
     public int fundoSocial() { return fundoSocial; }
     public Map<UUID, Integer> todosOsVales() { return vales; }
-    public Map<UUID, Set<Ferramenta>> entregues() { return entregues; }
+    public Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues() { return entregues; }
 
     public void restaurar(Map<Recurso, Integer> quantidades, Map<Recurso, Integer> produzido,
                           Map<String, Integer> comidas, Map<UUID, Integer> vales,
-                          Map<UUID, Set<Ferramenta>> entregues, int fundoSocial) {
+                          Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues, int fundoSocial) {
         this.quantidades.clear();
         this.quantidades.putAll(quantidades);
         this.produzido.clear();
@@ -69,8 +67,11 @@ public final class Estoque {
         this.vales.clear();
         this.vales.putAll(vales);
         this.entregues.clear();
-        entregues.forEach((u, f) -> this.entregues.put(u, f.isEmpty() ? EnumSet.noneOf(Ferramenta.class)
-                : EnumSet.copyOf(f)));
+        entregues.forEach((u, f) -> {
+            Map<Ferramenta, Ferramenta.Grau> m = new EnumMap<>(Ferramenta.class);
+            m.putAll(f);
+            this.entregues.put(u, m);
+        });
         this.fundoSocial = fundoSocial;
     }
 
@@ -185,9 +186,13 @@ public final class Estoque {
 
     // ---- necessidade: ferramentas ----
 
-    /** Quem já recebeu essa ferramenta pela necessidade só recebe outra quando ela quebrar ou a pessoa morrer. */
-    public boolean podeReceber(UUID quem, Ferramenta f) {
-        return !entregues.getOrDefault(quem, Set.of()).contains(f);
+    /**
+     * Quem já recebeu essa ferramenta pela necessidade só recebe outra quando ela quebrar, quando morrer ou quando a
+     * meta subir para um grau melhor que o que recebeu.
+     */
+    public boolean podeReceber(UUID quem, Ferramenta f, Ferramenta.Grau g) {
+        Ferramenta.Grau recebeu = entregues.getOrDefault(quem, Map.of()).get(f);
+        return recebeu == null || recebeu.compareTo(g) < 0;
     }
 
     public boolean cobre(Map<Recurso, Integer> custo) {
@@ -195,17 +200,17 @@ public final class Estoque {
     }
 
     /** Tira do estoque e marca como entregue. Devolve false se o estoque não cobre. */
-    public boolean entregarFerramenta(UUID quem, Ferramenta f) {
-        if (!podeReceber(quem, f) || !cobre(f.custo)) {
+    public boolean entregarFerramenta(UUID quem, Ferramenta f, Ferramenta.Grau g) {
+        if (!podeReceber(quem, f, g) || !cobre(f.custo(g))) {
             return false;
         }
-        f.custo.forEach((r, c) -> quantidades.merge(r, -c, Integer::sum));
-        entregues.computeIfAbsent(quem, u -> EnumSet.noneOf(Ferramenta.class)).add(f);
+        f.custo(g).forEach((r, c) -> quantidades.merge(r, -c, Integer::sum));
+        entregues.computeIfAbsent(quem, u -> new EnumMap<>(Ferramenta.class)).put(f, g);
         return true;
     }
 
     public void quebrou(UUID quem, Ferramenta f) {
-        Set<Ferramenta> s = entregues.get(quem);
+        Map<Ferramenta, Ferramenta.Grau> s = entregues.get(quem);
         if (s != null) {
             s.remove(f);
         }
@@ -241,6 +246,18 @@ public final class Estoque {
     public boolean cobre(NivelDoKit nivel, Map<Recurso, Integer> reserva) {
         return nivel.custo.entrySet().stream().allMatch(c ->
                 quantidade(c.getKey()) - reserva.getOrDefault(c.getKey(), 0) >= c.getValue());
+    }
+
+    /** O que falta no estoque, fora da reserva, para esse kit. */
+    public Map<Recurso, Integer> faltaParaKit(NivelDoKit nivel, Map<Recurso, Integer> reserva) {
+        Map<Recurso, Integer> faltas = new EnumMap<>(Recurso.class);
+        nivel.custo.forEach((r, c) -> {
+            int falta = c + reserva.getOrDefault(r, 0) - quantidade(r);
+            if (falta > 0) {
+                faltas.put(r, falta);
+            }
+        });
+        return faltas;
     }
 
     public enum Tipo { ENTREGUE, SEM_VALES, FALTA_NO_ESTOQUE }

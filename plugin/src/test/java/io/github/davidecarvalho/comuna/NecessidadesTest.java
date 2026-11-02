@@ -3,6 +3,7 @@ package io.github.davidecarvalho.comuna;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +24,23 @@ class NecessidadesTest {
         e = new Estoque();
     }
 
+    /** Tem todas as ferramentas de pedra, menos as de "sem". */
     private static Necessidades.Pessoa pessoa(UUID id, int fome, boolean temComida, Set<Ferramenta> sem) {
-        return new Necessidades.Pessoa(id, fome, temComida, sem);
+        Map<Ferramenta, Ferramenta.Grau> tem = new EnumMap<>(Ferramenta.class);
+        for (Ferramenta f : Ferramenta.values()) {
+            if (!sem.contains(f)) {
+                tem.put(f, Ferramenta.Grau.PEDRA);
+            }
+        }
+        return new Necessidades.Pessoa(id, fome, temComida, tem);
+    }
+
+    private static Necessidades.Pessoa deFerro(UUID id) {
+        Map<Ferramenta, Ferramenta.Grau> tem = new EnumMap<>(Ferramenta.class);
+        for (Ferramenta f : Ferramenta.values()) {
+            tem.put(f, Ferramenta.Grau.FERRO);
+        }
+        return new Necessidades.Pessoa(id, 20, false, tem);
     }
 
     private Necessidades.Resultado atender(Necessidades.Pessoa... pessoas) {
@@ -81,6 +97,31 @@ class NecessidadesTest {
     @Test
     void semNecessidadeOLetreiroAgradece() {
         assertEquals(List.of("Ninguém passando necessidade agora. Bom trabalho, camaradas!"),
-                Necessidades.frases(atender(pessoa(ana, 20, false, Set.of()))));
+                Necessidades.frases(atender(deFerro(ana))));
+    }
+
+    @Test
+    void quandoTodosTemAsDePedraAMetaSobeParaFerro() {
+        e.depositar(ana, Recurso.FERRO, 3);
+        e.depositar(ana, Recurso.MADEIRA, 16); // madeira de sobra para os cabos
+        Necessidades.Resultado r = atender(pessoa(ana, 20, false, Set.of()), deFerro(beto));
+        assertEquals(Ferramenta.Grau.FERRO, r.meta());
+        assertEquals(new Estoque.Item("IRON_PICKAXE", 1), r.entregas().get(0).itens().get(0),
+                "3 lingotes: a picareta de ferro primeiro");
+        List<String> frases = Necessidades.frases(r);
+        assertEquals("Meta do plano: ferramentas de ferro para todos.", frases.get(0));
+        assertEquals("1 camarada está sem espada de ferro.", frases.get(1));
+        assertEquals("Deposite 8 lingotes de ferro para ajudar.", frases.get(frases.size() - 1),
+                "espada 2, machado 3, pá 1, enxada 2");
+    }
+
+    @Test
+    void enquantoAlguemNaoTemPedraNinguemGanhaFerro() {
+        e.depositar(ana, Recurso.FERRO, 100);
+        e.depositar(ana, Recurso.MADEIRA, 80);
+        Necessidades.Resultado r = atender(pessoa(ana, 20, false, Set.of()),
+                pessoa(beto, 20, false, EnumSet.of(Ferramenta.PICARETA)));
+        assertTrue(r.entregas().isEmpty(), "sem pedra no estoque, a picareta de pedra do Beto vem antes");
+        assertEquals(Ferramenta.Grau.PEDRA, r.meta());
     }
 }

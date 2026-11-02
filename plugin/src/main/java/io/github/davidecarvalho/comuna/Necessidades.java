@@ -5,7 +5,6 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
 
@@ -14,7 +13,8 @@ import java.util.UUID;
  * A Comissão do Plano olha quem está online e entrega direto no inventário:
  * <ul>
  *   <li>comida a quem chegou na fome que trava a corrida (3 coxinhas) e não tem comida consigo, até encher;</li>
- *   <li>a ferramenta de pedra que a pessoa não tem (picareta, machado, pá, enxada).</li>
+ *   <li>a ferramenta da meta do plano que a pessoa não tem (picareta, espada, machado, pá, enxada): primeiro de
+ *   pedra; quando todo mundo tem as de pedra, a meta sobe para as de ferro.</li>
  * </ul>
  * O que o estoque não cobre vira o pedido do letreiro: "3 camaradas estão sem picareta de pedra. Deposite...".
  */
@@ -26,20 +26,30 @@ public final class Necessidades {
     public static final int FOME_QUE_TRAVA_A_CORRIDA = 6;
     public static final int FOME_CHEIA = 20;
 
-    /** O que a Comissão sabe de cada pessoa: a fome, se tem comida consigo e as ferramentas que faltam. */
-    public record Pessoa(UUID id, int fome, boolean temComida, Set<Ferramenta> semFerramenta) { }
+    /** O que a Comissão sabe de cada pessoa: a fome, se tem comida consigo e o melhor grau de cada ferramenta. */
+    public record Pessoa(UUID id, int fome, boolean temComida, Map<Ferramenta, Ferramenta.Grau> ferramentas) {
+
+        boolean temAoMenos(Ferramenta f, Ferramenta.Grau g) {
+            Ferramenta.Grau tem = ferramentas.get(f);
+            return tem != null && tem.compareTo(g) >= 0;
+        }
+    }
 
     public enum Motivo { FOME, FERRAMENTA }
 
     public record Entrega(UUID quem, Motivo motivo, List<Estoque.Item> itens) { }
 
     /**
-     * O que foi entregue e o que ficou faltando. demanda: o que as ferramentas que faltaram custam (a reserva que o
-     * kit por vales não pode tocar); faltas: o que falta no estoque para cobri-las.
+     * O que foi entregue e o que ficou faltando. meta: o grau que o plano está pedindo agora (nulo quando todo mundo
+     * já tem tudo); demanda: o que as ferramentas que faltaram custam (a reserva que o kit por vales não pode tocar);
+     * faltas: o que falta no estoque para cobri-las.
      */
-    public record Resultado(List<Entrega> entregas, int comFome, int pontosDeFomeQueFaltam,
+    public record Resultado(List<Entrega> entregas, int comFome, int pontosDeFomeQueFaltam, Ferramenta.Grau meta,
                             Map<Ferramenta, Integer> semFerramenta, Map<Recurso, Integer> demanda,
-                            Map<Recurso, Integer> faltas) { }
+                            Map<Recurso, Integer> faltas) {
+
+        public static final Resultado VAZIO = new Resultado(List.of(), 0, 0, null, Map.of(), Map.of(), Map.of());
+    }
 
     public static Resultado atender(List<Pessoa> pessoas, Estoque e, int fomeQuePedeComida) {
         List<Entrega> entregas = new ArrayList<>();
@@ -63,21 +73,33 @@ public final class Necessidades {
         }
         pontosQueFaltam = Math.max(0, pontosQueFaltam - e.pontosDeComida());
 
-        // ferramentas: a picareta de todo mundo antes do machado de alguém
+        // ferramentas: todo mundo com as de pedra antes de alguém ganhar as de ferro; dentro de cada meta, a picareta
+        // de todo mundo antes da espada de alguém
         Map<Ferramenta, Integer> sem = new EnumMap<>(Ferramenta.class);
         Map<Recurso, Integer> demanda = new EnumMap<>(Recurso.class);
-        for (Ferramenta f : Ferramenta.values()) {
-            for (Pessoa p : pessoas) {
-                if (!p.semFerramenta().contains(f) || !e.podeReceber(p.id(), f)) {
-                    continue;
-                }
-                if (e.entregarFerramenta(p.id(), f)) {
-                    entregas.add(new Entrega(p.id(), Motivo.FERRAMENTA, List.of(new Estoque.Item(f.material(), 1))));
-                } else {
-                    sem.merge(f, 1, Integer::sum);
-                    f.custo.forEach((r, c) -> demanda.merge(r, c, Integer::sum));
+        Ferramenta.Grau meta = null;
+        Ferramenta.Grau anterior = null;
+        for (Ferramenta.Grau g : Ferramenta.METAS) {
+            for (Ferramenta f : Ferramenta.values()) {
+                for (Pessoa p : pessoas) {
+                    if (p.temAoMenos(f, g) || !e.podeReceber(p.id(), f, g)
+                            || (anterior != null && !p.temAoMenos(f, anterior))) {
+                        continue;
+                    }
+                    if (e.entregarFerramenta(p.id(), f, g)) {
+                        entregas.add(new Entrega(p.id(), Motivo.FERRAMENTA,
+                                List.of(new Estoque.Item(f.material(g), 1))));
+                    } else {
+                        sem.merge(f, 1, Integer::sum);
+                        f.custo(g).forEach((r, c) -> demanda.merge(r, c, Integer::sum));
+                    }
                 }
             }
+            if (!sem.isEmpty()) {
+                meta = g;
+                break;
+            }
+            anterior = g;
         }
         Map<Recurso, Integer> faltas = new EnumMap<>(Recurso.class);
         demanda.forEach((r, d) -> {
@@ -86,7 +108,7 @@ public final class Necessidades {
                 faltas.put(r, falta);
             }
         });
-        return new Resultado(entregas, comFome, pontosQueFaltam, sem, demanda, faltas);
+        return new Resultado(entregas, comFome, pontosQueFaltam, meta, sem, demanda, faltas);
     }
 
     /** O que o letreiro da Comissão do Plano fala. */
@@ -97,7 +119,10 @@ public final class Necessidades {
             frases.add(camaradas(r.comFome()) + " com fome. Deposite comida pronta ou " + paes * Comida.TRIGOS_POR_PAO
                     + " trigos (" + paes + (paes == 1 ? " pão" : " pães") + ") para alimentar.");
         }
-        r.semFerramenta().forEach((f, n) -> frases.add(camaradas(n) + " sem " + f.nome + "."));
+        if (r.meta() != null && r.meta() != Ferramenta.METAS[0]) {
+            frases.add("Meta do plano: ferramentas " + r.meta().nome + " para todos.");
+        }
+        r.semFerramenta().forEach((f, n) -> frases.add(camaradas(n) + " sem " + f.nome(r.meta()) + "."));
         if (!r.faltas().isEmpty()) {
             StringJoiner lista = new StringJoiner(", ");
             List<String> partes = new ArrayList<>();

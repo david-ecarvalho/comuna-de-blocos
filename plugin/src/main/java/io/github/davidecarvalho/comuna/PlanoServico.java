@@ -4,12 +4,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -57,7 +54,7 @@ final class PlanoServico implements Listener {
     private UUID npc;
     private UUID letreiro;
     private Location ondeEsta;
-    private Necessidades.Resultado ultimo = new Necessidades.Resultado(List.of(), 0, 0, Map.of(), Map.of(), Map.of());
+    private Necessidades.Resultado ultimo = Necessidades.Resultado.VAZIO;
 
     PlanoServico(JavaPlugin plugin, Estoque estoque, int fomeQuePedeComida) {
         this.plugin = plugin;
@@ -79,13 +76,11 @@ final class PlanoServico implements Listener {
                 temComida |= Comida.eComida(i.getType().name());
             }
         }
-        Set<Ferramenta> sem = EnumSet.noneOf(Ferramenta.class);
+        Map<Ferramenta, Ferramenta.Grau> tem = new EnumMap<>(Ferramenta.class);
         for (Ferramenta f : Ferramenta.values()) {
-            if (!f.temBoa(materiais)) {
-                sem.add(f);
-            }
+            f.melhor(materiais).ifPresent(g -> tem.put(f, g));
         }
-        return new Necessidades.Pessoa(p.getUniqueId(), p.getFoodLevel(), temComida, sem);
+        return new Necessidades.Pessoa(p.getUniqueId(), p.getFoodLevel(), temComida, tem);
     }
 
     /** Olha quem está online no modo sobrevivência, entrega o que o estoque cobre e atualiza o letreiro. */
@@ -125,8 +120,8 @@ final class PlanoServico implements Listener {
 
     @EventHandler
     void aoQuebrar(PlayerItemBreakEvent e) {
-        Ferramenta.deBoa(e.getBrokenItem().getType().name()).ifPresent(f -> {
-            estoque.quebrou(e.getPlayer().getUniqueId(), f);
+        Ferramenta.de(e.getBrokenItem().getType().name()).ifPresent(q -> {
+            estoque.quebrou(e.getPlayer().getUniqueId(), q.ferramenta());
             salvar();
         });
     }
@@ -141,7 +136,7 @@ final class PlanoServico implements Listener {
 
     // ---- o NPC ----
 
-    private static Location noChao(Location l) {
+    static Location noChao(Location l) {
         return l.getWorld().getHighestBlockAt(l).getLocation().add(0.5, 1, 0.5);
     }
 
@@ -248,11 +243,13 @@ final class PlanoServico implements Listener {
                     + estoque.custoEmVales(r.nivel()) + " vales-trabalho e faltam " + r.valesQueFaltam()
                     + ". Deposite com /estoque depositar.", NamedTextColor.YELLOW));
             case FALTA_NO_ESTOQUE -> {
-                p.sendMessage(Component.text(ultimo.demanda().isEmpty()
-                        ? "O estoque ainda não fecha o kit " + r.nivel().nome + "."
-                        : "A necessidade vem antes: o estoque está guardado para quem não tem ferramenta.",
-                        NamedTextColor.RED));
-                frasesAgora().forEach(f -> p.sendMessage(Component.text(" - " + f, NamedTextColor.GRAY)));
+                List<String> partes = new ArrayList<>();
+                estoque.faltaParaKit(r.nivel(), ultimo.demanda()).forEach((rec, q) -> partes.add(rec.fala(q)));
+                p.sendMessage(Component.text("Você tem " + estoque.vales(p.getUniqueId()) + " vales (o kit "
+                        + r.nivel().nome + " custa " + estoque.custoEmVales(r.nivel()) + "), mas falta no estoque: "
+                        + String.join(", ", partes) + "."
+                        + (ultimo.demanda().isEmpty() ? "" : " A necessidade vem antes: parte do estoque está guardada"
+                                + " para quem não tem ferramenta."), NamedTextColor.RED));
             }
         }
     }
@@ -297,10 +294,14 @@ final class PlanoServico implements Listener {
                 : estoque.depositar(p.getUniqueId(), valor.get().recurso(), itens * valor.get().unidades());
         salvar();
         atenderNecessidades(); // se alguém esperava por isso, recebe agora
-        return Component.text(itens + " de ").append(Component.translatable(tipo.translationKey()))
+        Component c = Component.text(itens + " de ").append(Component.translatable(tipo.translationKey()))
                 .append(Component.text(" no estoque coletivo: +" + ganhos + " vales-trabalho (total "
                         + estoque.vales(p.getUniqueId()) + ")."))
                 .color(NamedTextColor.GREEN);
+        for (String f : frasesAgora()) {
+            c = c.append(Component.newline()).append(Component.text(" " + f, NamedTextColor.GRAY));
+        }
+        return c;
     }
 
     Component resumo(Player p) {
@@ -346,13 +347,18 @@ final class PlanoServico implements Listener {
         if (v != null) {
             v.getKeys(false).forEach(k -> vales.put(UUID.fromString(k), v.getInt(k)));
         }
-        Map<UUID, Set<Ferramenta>> entregues = new HashMap<>();
+        Map<UUID, Map<Ferramenta, Ferramenta.Grau>> entregues = new HashMap<>();
         ConfigurationSection en = y.getConfigurationSection("entregues");
         if (en != null) {
             for (String k : en.getKeys(false)) {
-                Set<Ferramenta> s = new HashSet<>();
-                en.getStringList(k).forEach(f -> s.add(Ferramenta.valueOf(f)));
-                entregues.put(UUID.fromString(k), s);
+                ConfigurationSection quem = en.getConfigurationSection(k);
+                if (quem == null) {
+                    continue;
+                }
+                Map<Ferramenta, Ferramenta.Grau> m = new EnumMap<>(Ferramenta.class);
+                quem.getKeys(false).forEach(f -> m.put(Ferramenta.valueOf(f),
+                        Ferramenta.Grau.valueOf(quem.getString(f))));
+                entregues.put(UUID.fromString(k), m);
             }
         }
         estoque.restaurar(qtd, prod, comidas, vales, entregues, y.getInt("fundo-social", 0));
@@ -371,7 +377,7 @@ final class PlanoServico implements Listener {
         }
         estoque.comidas().forEach((m, q) -> y.set("comida." + m, q));
         estoque.todosOsVales().forEach((u, q) -> y.set("vales." + u, q));
-        estoque.entregues().forEach((u, s) -> y.set("entregues." + u, s.stream().map(Enum::name).toList()));
+        estoque.entregues().forEach((u, m) -> m.forEach((f, g) -> y.set("entregues." + u + "." + f.name(), g.name())));
         y.set("fundo-social", estoque.fundoSocial());
         y.set("npc", npc == null ? null : npc.toString());
         y.set("letreiro", letreiro == null ? null : letreiro.toString());

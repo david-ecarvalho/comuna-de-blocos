@@ -19,3 +19,6 @@ vale-trabalho:
 necessidade:
   # com quantos pontos de fome a Comissão manda comida (6 = 3 coxinhas, quando o jogo trava a corrida)
   fome-que-pede-comida: 6
+guarda:
+  # golens de ferro da Guarda Popular na praça do spawn (não atacam trabalhador nem soltam ferro)
+  golens: 3

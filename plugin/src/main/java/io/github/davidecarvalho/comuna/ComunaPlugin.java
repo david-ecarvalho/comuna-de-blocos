@@ -51,7 +51,12 @@ public final class ComunaPlugin extends JavaPlugin {
             garantirPraca();
             plano.garantirNoSpawn();
         });
-        getServer().getScheduler().runTaskTimer(this, plano::atenderNecessidades, 100L, 200L);
+        GuardaPopular guarda = new GuardaPopular(this, getConfig().getInt("guarda.golens", 3));
+        getServer().getPluginManager().registerEvents(guarda, this);
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            plano.atenderNecessidades();
+            guarda.manter();
+        }, 100L, 200L);
         getLogger().info(territorio.areas().size() + " áreas carregadas.");
     }
 
