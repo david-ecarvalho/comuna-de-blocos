@@ -49,3 +49,7 @@ build/
 .idea/
 *.iml
 .vscode/
+
+# servidor de teste
+servidor-teste/dados/
+!servidor-teste/.env.exemplo

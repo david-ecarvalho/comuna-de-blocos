@@ -1,0 +1,40 @@
+# Servidor de TESTE local (fase 1): fechado, só para quem desenvolve.
+# A porta só responde nesta máquina (127.0.0.1): ninguém de fora conecta. A abertura para o público vai ser pelo
+# proxy Velocity numa VPS (ver docs/pesquisa-fase-0.md), nunca abrindo porta no roteador.
+#
+# Uso:  docker compose up -d      (sobe)
+#       docker compose logs -f    (acompanha)
+#       docker compose down       (desliga)
+# O mundo e os arquivos do servidor ficam em ./dados (fora do git).
+services:
+  comuna:
+    image: itzg/minecraft-server:java21
+    container_name: comuna-teste
+    ports:
+      - "127.0.0.1:25565:25565"
+    environment:
+      EULA: "${EULA:-FALSE}"          # a EULA da Mojang é aceita por quem roda o servidor, no arquivo .env
+      TYPE: PAPER
+      VERSION: "${VERSAO:-LATEST}"
+      MEMORY: 4G
+      ONLINE_MODE: "TRUE"
+      ENFORCE_SECURE_PROFILE: "TRUE"
+      ENABLE_WHITELIST: "TRUE"
+      ENFORCE_WHITELIST: "TRUE"
+      WHITELIST: "${WHITELIST:-}"
+      OPS: ""                         # ninguém com /op; permissões pelo LuckPerms
+      ENABLE_RCON: "FALSE"
+      ENABLE_QUERY: "FALSE"
+      MOTD: "Comuna de Blocos (teste)"
+      DIFFICULTY: normal
+      VIEW_DISTANCE: 10
+      SIMULATION_DISTANCE: 8
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./dados:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 6G
+    restart: "no"
