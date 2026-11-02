@@ -1,6 +1,6 @@
 # Servidor de TESTE local (fase 1): fechado, só para quem desenvolve.
-# A porta só responde nesta máquina (127.0.0.1): ninguém de fora conecta. A abertura para o público vai ser pelo
-# proxy Velocity numa VPS (ver docs/pesquisa-fase-0.md), nunca abrindo porta no roteador.
+# A porta local só responde nesta máquina (127.0.0.1). Quem é de fora entra pelo túnel do playit.gg (serviço playit),
+# sem abrir porta no roteador. Com a vaquinha, o próximo passo é o proxy Velocity numa VPS (docs/pesquisa-fase-0.md).
 #
 # Uso:  docker compose up -d      (sobe)
 #       docker compose logs -f    (acompanha)
@@ -37,4 +37,17 @@ services:
         limits:
           cpus: "4"
           memory: 6G
+    restart: "no"
+
+  # Túnel do playit.gg (02/11/2026): os jogadores conectam no endereço do playit e o IP de casa não aparece, sem
+  # abrir porta no roteador. Divide a rede com o servidor, então o túnel aponta para 127.0.0.1:25565.
+  # A chave do agente fica no .env (PLAYIT_SECRET), nunca no git.
+  playit:
+    image: ghcr.io/playit-cloud/playit-agent:1.0
+    container_name: comuna-playit
+    network_mode: "service:comuna"
+    environment:
+      SECRET_KEY: "${PLAYIT_SECRET:?falta PLAYIT_SECRET no .env}"
+    depends_on:
+      - comuna
     restart: "no"
