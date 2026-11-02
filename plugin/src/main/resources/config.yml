@@ -5,3 +5,12 @@ base:
 lava:
   # defesa contra lavacast: no máximo tantos baldes de lava por minuto, por jogador
   baldes-por-minuto: 6
+vale-trabalho:
+  # Crítica do Programa de Gotha: uma parte do trabalho vai para o fundo social (o primeiro kit de quem chega sai dele)
+  fundo-social-percentual: 20
+  # trabalho de uma unidade, em vales (pedra = 1 pedregulho, madeira = 1 graveto, trigo = 1 trigo, ferro = 1 lingote)
+  pesos:
+    pedra: 1
+    madeira: 1
+    trigo: 1
+    ferro: 4

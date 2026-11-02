@@ -25,6 +25,7 @@ services:
       OPS: ""                         # ninguém com /op; permissões pelo LuckPerms
       ENABLE_RCON: "FALSE"
       ENABLE_QUERY: "FALSE"
+      CREATE_CONSOLE_IN_PIPE: "TRUE"   # comandos de console só de dentro desta máquina (docker exec mc-send-to-console)
       MOTD: "Comuna de Blocos (teste)"
       DIFFICULTY: normal
       VIEW_DISTANCE: 10

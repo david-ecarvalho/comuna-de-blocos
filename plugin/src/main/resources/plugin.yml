@@ -11,7 +11,16 @@ commands:
   coletiva:
     description: "Criar, remover ou listar áreas coletivas (coordenação)."
     usage: /coletiva criar <nome> <raio> [fundicao] | remover <nome> | lista
+  estoque:
+    description: "Estoque coletivo: depositar o que está na mão (ganha vales-trabalho) ou ver o estoque."
+    usage: /estoque depositar [tudo] | ver
+  plano:
+    description: "Coordenação: colocar ou remover o NPC da Comissão do Plano."
+    usage: /plano npc | remover
 permissions:
+  comuna.coordenacao:
+    description: "Coordenação: cria áreas coletivas e coloca a Comissão do Plano."
+    default: false
   comuna.admin:
-    description: "Coordenação: cria áreas coletivas e passa por cima das proteções."
+    description: "Passa por cima das proteções (só para manutenção)."
     default: false

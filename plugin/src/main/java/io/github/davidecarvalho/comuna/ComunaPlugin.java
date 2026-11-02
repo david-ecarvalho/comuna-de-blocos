@@ -1,7 +1,9 @@
 package io.github.davidecarvalho.comuna;
 
 import java.io.IOException;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
@@ -15,8 +17,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 /** Comuna de Blocos: bases pessoais, áreas coletivas e defesa contra lavacast. */
 public final class ComunaPlugin extends JavaPlugin {
 
+    /** Cria áreas coletivas e coloca a Comissão do Plano, sem passar por cima das proteções. */
+    static final String PERMISSAO_COORDENACAO = "comuna.coordenacao";
+
     private final Territorio territorio = new Territorio();
     private Armazem armazem;
+    private PlanoServico plano;
     private int raioDaBase;
 
     @Override
@@ -28,7 +34,23 @@ public final class ComunaPlugin extends JavaPlugin {
         armazem = new Armazem(getDataFolder());
         territorio.carregar(armazem.ler());
         getServer().getPluginManager().registerEvents(new ProtecaoListener(territorio, ritmo), this);
+
+        Map<Recurso, Integer> pesos = new EnumMap<>(Recurso.class);
+        for (Recurso r : Recurso.values()) {
+            pesos.put(r, getConfig().getInt("vale-trabalho.pesos." + r.name().toLowerCase(Locale.ROOT), r.pesoPadrao));
+        }
+        Estoque estoque = new Estoque(pesos, getConfig().getInt("vale-trabalho.fundo-social-percentual", 20));
+        plano = new PlanoServico(this, estoque);
+        getServer().getPluginManager().registerEvents(plano, this);
+        getServer().getScheduler().runTaskTimer(this, plano::atualizarLetreiro, 100L, 200L);
         getLogger().info(territorio.areas().size() + " áreas carregadas.");
+    }
+
+    @Override
+    public void onDisable() {
+        if (plano != null) {
+            plano.salvar();
+        }
     }
 
     @Override
@@ -41,8 +63,38 @@ public final class ComunaPlugin extends JavaPlugin {
         return switch (comando.getName()) {
             case "base" -> base(p, acao);
             case "coletiva" -> coletiva(p, acao, args);
+            case "estoque" -> estoque(p, acao, args);
+            case "plano" -> plano(p, acao);
             default -> false;
         };
+    }
+
+    private boolean estoque(Player p, String acao, String[] args) {
+        switch (acao) {
+            case "depositar" -> p.sendMessage(plano.depositar(p, args.length > 1 && args[1].equalsIgnoreCase("tudo")));
+            case "ver", "" -> p.sendMessage(plano.resumo(p));
+            default -> p.sendMessage(Component.text("/estoque depositar [tudo] | ver", NamedTextColor.GRAY));
+        }
+        return true;
+    }
+
+    private boolean plano(Player p, String acao) {
+        if (!p.hasPermission(PERMISSAO_COORDENACAO)) {
+            p.sendMessage(Component.text("Só a coordenação coloca a Comissão do Plano.", NamedTextColor.RED));
+            return true;
+        }
+        switch (acao) {
+            case "npc" -> {
+                plano.colocarNpc(p.getLocation());
+                p.sendMessage(Component.text("Comissão do Plano colocada aqui.", NamedTextColor.GREEN));
+            }
+            case "remover" -> {
+                plano.removerNpc();
+                p.sendMessage(Component.text("Comissão do Plano removida.", NamedTextColor.GREEN));
+            }
+            default -> p.sendMessage(Component.text("/plano npc | remover", NamedTextColor.GRAY));
+        }
+        return true;
     }
 
     private boolean base(Player p, String acao) {
@@ -66,7 +118,7 @@ public final class ComunaPlugin extends JavaPlugin {
     }
 
     private boolean coletiva(Player p, String acao, String[] args) {
-        if (!p.hasPermission(ProtecaoListener.PERMISSAO_ADMIN)) {
+        if (!p.hasPermission(PERMISSAO_COORDENACAO)) {
             p.sendMessage(Component.text("Só a coordenação cria área coletiva.", NamedTextColor.RED));
             return true;
         }
