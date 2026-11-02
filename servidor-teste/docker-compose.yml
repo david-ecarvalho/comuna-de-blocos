@@ -57,6 +57,9 @@ services:
     network_mode: "service:comuna"
     environment:
       SECRET_KEY: "${PLAYIT_SECRET:?falta PLAYIT_SECRET no .env}"
+    # usa a rede do servidor: quando o servidor reinicia, o túnel tem que reiniciar junto, senão fica sem internet
     depends_on:
-      - comuna
+      comuna:
+        condition: service_started
+        restart: true
     restart: "no"
