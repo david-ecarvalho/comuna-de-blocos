@@ -36,6 +36,7 @@ public final class ComunaPlugin extends JavaPlugin {
         armazem = new Armazem(getDataFolder());
         territorio.carregar(armazem.ler());
         getServer().getPluginManager().registerEvents(new ProtecaoListener(territorio, ritmo), this);
+        getServer().getPluginManager().registerEvents(new Lenhador(territorio), this);
 
         Map<Recurso, Integer> pesos = new EnumMap<>(Recurso.class);
         for (Recurso r : Recurso.values()) {

@@ -12,11 +12,15 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Statistic;
+import org.bukkit.Tag;
 import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Display;
@@ -157,8 +161,21 @@ final class PlanoServico implements Listener {
 
     // ---- o NPC ----
 
+    /** Em cima do chão de verdade, nunca na copa de uma árvore. */
     static Location noChao(Location l) {
-        return l.getWorld().getHighestBlockAt(l).getLocation().add(0.5, 1, 0.5);
+        World w = l.getWorld();
+        Block b = w.getHighestBlockAt(l.getBlockX(), l.getBlockZ(), HeightMap.MOTION_BLOCKING_NO_LEAVES);
+        while (b.getY() > w.getMinHeight() && (Tag.LOGS.isTagged(b.getType()) || Tag.LEAVES.isTagged(b.getType())
+                || b.isPassable())) {
+            b = b.getRelative(BlockFace.DOWN);
+        }
+        return b.getLocation().add(0.5, 1, 0.5);
+    }
+
+    /** Se está em cima de tronco ou folha (golem que subiu na árvore). */
+    static boolean emCimaDeArvore(Location l) {
+        Material embaixo = l.clone().subtract(0, 0.5, 0).getBlock().getType();
+        return Tag.LOGS.isTagged(embaixo) || Tag.LEAVES.isTagged(embaixo);
     }
 
     private static boolean pertoDoSpawn(Location l) {

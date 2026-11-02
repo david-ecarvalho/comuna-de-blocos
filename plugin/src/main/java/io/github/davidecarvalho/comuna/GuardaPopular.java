@@ -22,7 +22,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * A Guarda Popular: golens de ferro que defendem a praça do spawn dos monstros. Ficam na
- * praça (quem sai volta), não atacam trabalhador, trabalhador não fere a guarda, e quem morre volta em até 10 segundos
+ * praça (quem sai ou sobe numa árvore volta para o chão), não atacam trabalhador, trabalhador não fere a guarda, e quem morre volta em até 10 segundos
  * sem soltar ferro (senão a guarda vira fazenda de ferro).
  */
 final class GuardaPopular implements Listener {
@@ -65,7 +65,7 @@ final class GuardaPopular implements Listener {
             IronGolem g = guarda.get(i);
             if (i >= quantos) {
                 g.remove();
-            } else if (!naPraca(g.getLocation(), spawn)) {
+            } else if (!naPraca(g.getLocation(), spawn) || PlanoServico.emCimaDeArvore(g.getLocation())) {
                 g.teleport(pontoDaPraca(mundo));
             }
         }
