@@ -8,14 +8,14 @@
 # O mundo e os arquivos do servidor ficam em ./dados (fora do git).
 services:
   comuna:
-    image: itzg/minecraft-server:java21
+    image: itzg/minecraft-server:java25
     container_name: comuna-teste
     ports:
       - "127.0.0.1:25565:25565"
     environment:
       EULA: "${EULA:-FALSE}"          # a EULA da Mojang é aceita por quem roda o servidor, no arquivo .env
       TYPE: PAPER
-      VERSION: "${VERSAO:-LATEST}"
+      VERSION: "${VERSAO:-26.3}"
       MEMORY: 4G
       ONLINE_MODE: "TRUE"
       ENFORCE_SECURE_PROFILE: "TRUE"
